@@ -1,6 +1,10 @@
 #![deny(unsafe_code)]
 #![doc = "Apalabrar editor core — umbrella public API exposing the WASM-callable surface."]
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+
 use thiserror::Error;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -47,39 +51,143 @@ pub enum Error {
     SerializeFailed { reason: String },
 }
 
+// -----------------------------------------------------------------------------
+// Registry
+// -----------------------------------------------------------------------------
+//
+// The registry maps DocId -> doc-model::Doc. It lives behind a static Mutex
+// because the WASM bridge uses free functions (no `&self`); JS callers
+// thread their handle through every call. AtomicU64 hands out monotonic ids.
+
+struct Document {
+    doc: apalabrar_doc_model::Doc,
+}
+
+static REGISTRY: OnceLock<Mutex<HashMap<u64, Document>>> = OnceLock::new();
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+fn registry() -> &'static Mutex<HashMap<u64, Document>> {
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn allocate_id() -> u64 {
+    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+// -----------------------------------------------------------------------------
+// Public API
+// -----------------------------------------------------------------------------
+
 /// Parse an OOXML byte stream into a fresh in-memory document and return an
 /// opaque handle. Errors with `EmptyInput` for `&[]` and `InvalidOoxml` if
 /// the bytes are not a valid `.docx` zip.
-pub fn open_docx(_bytes: &[u8]) -> Result<DocId, Error> {
-    todo!("Step 4 GREEN: parse OOXML via apalabrar-format-docx and seed Loro doc")
+pub fn open_docx(bytes: &[u8]) -> Result<DocId, Error> {
+    if bytes.is_empty() {
+        return Err(Error::EmptyInput);
+    }
+    let text = apalabrar_format_docx::parse_text(bytes).map_err(|_| Error::InvalidOoxml)?;
+    let mut doc = apalabrar_doc_model::Doc::new();
+    if !text.is_empty() {
+        doc.insert(0, &text);
+    }
+    let id_value = allocate_id();
+    registry()
+        .lock()
+        .expect("registry mutex must not be poisoned")
+        .insert(id_value, Document { doc });
+    Ok(DocId(id_value))
 }
 
 /// Apply an edit to the plain-text projection of the doc.
-/// Returns `UnknownDoc` if the handle has been closed, `OffsetOutOfBounds`
-/// for offsets past the doc length, `OffsetNotOnCharBoundary` for offsets
-/// inside a multi-byte UTF-8 codepoint, and `InvalidRange` for malformed
-/// delete ranges.
-pub fn apply_op(_doc: DocId, _op: EditOp) -> Result<(), Error> {
-    todo!("Step 4 GREEN: route InsertText/DeleteRange into the Loro-backed doc-model")
+pub fn apply_op(doc_id: DocId, op: EditOp) -> Result<(), Error> {
+    let mut reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get_mut(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let current = entry.doc.text();
+    match op {
+        EditOp::InsertText { offset, text } => {
+            validate_insert_offset(&current, offset)?;
+            let char_offset = byte_to_char_offset(&current, offset);
+            entry.doc.insert(char_offset, &text);
+        }
+        EditOp::DeleteRange { start, end } => {
+            validate_delete_range(&current, start, end)?;
+            let char_start = byte_to_char_offset(&current, start);
+            let char_end = byte_to_char_offset(&current, end);
+            entry.doc.delete(char_start..char_end);
+        }
+    }
+    Ok(())
 }
 
-/// Serialize the current state of the doc back to OOXML bytes. The output
-/// must round-trip: `open_docx(to_docx(d))` reproduces the same plain text.
-pub fn to_docx(_doc: DocId) -> Result<Vec<u8>, Error> {
-    todo!("Step 4 GREEN: serialize the doc back to OOXML via apalabrar-format-docx")
+/// Serialize the current state of the doc back to OOXML bytes.
+pub fn to_docx(doc_id: DocId) -> Result<Vec<u8>, Error> {
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let text = entry.doc.text();
+    apalabrar_format_docx::serialize_text(&text).map_err(|e| Error::SerializeFailed {
+        reason: e.to_string(),
+    })
 }
 
-/// Project the document state to a plain-text string. Used for tests and
-/// for the demo page render path. Returns `UnknownDoc` on a closed handle.
-pub fn doc_text(_doc: DocId) -> Result<String, Error> {
-    todo!("Step 4 GREEN: project the doc-model state to plain text")
+/// Project the document state to a plain-text string.
+pub fn doc_text(doc_id: DocId) -> Result<String, Error> {
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    Ok(entry.doc.text())
 }
 
-/// Drop a document from the registry. Subsequent calls with the same `DocId`
-/// return `UnknownDoc`. Closing an already-closed handle also returns
-/// `UnknownDoc`.
-pub fn close_doc(_doc: DocId) -> Result<(), Error> {
-    todo!("Step 4 GREEN: remove the entry from the registry")
+/// Drop a document from the registry.
+pub fn close_doc(doc_id: DocId) -> Result<(), Error> {
+    let mut reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    if reg.remove(&doc_id.0).is_some() {
+        Ok(())
+    } else {
+        Err(Error::UnknownDoc(doc_id))
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validation helpers
+// -----------------------------------------------------------------------------
+
+fn validate_insert_offset(text: &str, offset: usize) -> Result<(), Error> {
+    let len = text.len();
+    if offset > len {
+        return Err(Error::OffsetOutOfBounds { offset, len });
+    }
+    if !text.is_char_boundary(offset) {
+        return Err(Error::OffsetNotOnCharBoundary { offset });
+    }
+    Ok(())
+}
+
+fn validate_delete_range(text: &str, start: usize, end: usize) -> Result<(), Error> {
+    let len = text.len();
+    if start > end || end > len {
+        return Err(Error::InvalidRange { start, end, len });
+    }
+    if !text.is_char_boundary(start) {
+        return Err(Error::OffsetNotOnCharBoundary { offset: start });
+    }
+    if !text.is_char_boundary(end) {
+        return Err(Error::OffsetNotOnCharBoundary { offset: end });
+    }
+    Ok(())
+}
+
+/// Translate a UTF-8 byte offset on a char boundary into a codepoint
+/// (Unicode scalar) offset. Caller guarantees the byte offset is on a
+/// char boundary, otherwise the slice indexing panics.
+fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
+    text[..byte_offset].chars().count()
 }
 
 #[cfg(test)]
