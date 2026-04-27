@@ -140,3 +140,96 @@ fn paragraph_text_preserves_latam_accents() {
         );
     }
 }
+
+// ---------- Mutation-kill tests ----------
+//
+// Pinned exact paragraph counts per fixture so any mutation in
+// `index_paragraphs` that mis-identifies <w:p> boundaries (replace == with
+// !=, replace && with ||, drop the Event::End arm, etc.) flips the count
+// and fails the test. The numbers come from the insta snapshots accepted
+// in the GREEN commit.
+
+#[test]
+fn paragraph_count_matches_expected_per_fixture() {
+    for (label, bytes, expected) in [
+        ("simple-paragraph", SIMPLE_PARAGRAPH, 1usize),
+        ("heading-hierarchy", HEADING_HIERARCHY, 11),
+        ("spanish-tildes", SPANISH_TILDES, 7),
+        ("simple-table", SIMPLE_TABLE, 11),
+        ("single-footnote", SINGLE_FOOTNOTE, 1),
+    ] {
+        let model = read(bytes).expect("read");
+        assert_eq!(
+            model.paragraph_count(),
+            expected,
+            "{label}: paragraph count drift",
+        );
+    }
+}
+
+#[test]
+fn read_modify_write_then_re_read_observes_modification() {
+    // End-to-end exercise of the dirty-write path: rebuild_document_xml,
+    // format_paragraph, and xml_escape all run when a paragraph is set.
+    // Re-reading the produced bytes must reflect the new text on the
+    // mutated paragraph and leave every other paragraph's text intact.
+    let mut model = read(HEADING_HIERARCHY).expect("read");
+    let original_count = model.paragraph_count();
+    assert!(original_count >= 4, "need at least four paragraphs");
+
+    let original_other_texts: Vec<String> = (1..original_count)
+        .filter_map(|i| model.paragraph_text(i).map(str::to_owned))
+        .collect();
+
+    model
+        .set_paragraph_text(0, "MUTATION_KILL_PROBE")
+        .expect("set_paragraph_text");
+    let bytes = write(&model).expect("write");
+    let reloaded = read(&bytes).expect("re-read");
+    assert_eq!(reloaded.paragraph_count(), original_count);
+    assert_eq!(
+        reloaded.paragraph_text(0),
+        Some("MUTATION_KILL_PROBE"),
+        "modified paragraph must reflect the new text after a write/re-read cycle",
+    );
+    for (i, original) in original_other_texts.iter().enumerate() {
+        let i = i + 1;
+        assert_eq!(
+            reloaded.paragraph_text(i),
+            Some(original.as_str()),
+            "untouched paragraph {i} must keep its original text",
+        );
+    }
+}
+
+#[test]
+fn set_paragraph_text_escapes_xml_special_characters() {
+    // The dirty-write path runs xml_escape on the new text. If escaping is
+    // dropped, '<', '&', '>' would either crash quick-xml on re-read or
+    // surface as literal characters that change the semantic content.
+    let mut model = read(SIMPLE_PARAGRAPH).expect("read");
+    model
+        .set_paragraph_text(0, "less< amp& greater> all together")
+        .expect("set");
+    let bytes = write(&model).expect("write");
+    let reloaded = read(&bytes).expect("re-read");
+    assert_eq!(
+        reloaded.paragraph_text(0),
+        Some("less< amp& greater> all together"),
+        "XML special chars must round-trip through the escape/unescape pair",
+    );
+}
+
+#[test]
+fn set_paragraph_text_with_quotes_round_trips() {
+    let mut model = read(SIMPLE_PARAGRAPH).expect("read");
+    model
+        .set_paragraph_text(0, r#"double "quotes" and 'apostrophes'"#)
+        .expect("set");
+    let bytes = write(&model).expect("write");
+    let reloaded = read(&bytes).expect("re-read");
+    assert_eq!(
+        reloaded.paragraph_text(0),
+        Some(r#"double "quotes" and 'apostrophes'"#),
+    );
+}
