@@ -6,9 +6,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "playwright test --project=chromium",
-    "test:ci": "playwright test",
-    "test:headed": "playwright test --headed --project=chromium",
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:ci": "playwright test",
+    "test:e2e:headed": "playwright test --headed --project=chromium",
     "test:a11y": "playwright test --grep=@a11y",
     "report": "playwright show-report",
     "install-browsers": "playwright install --with-deps"

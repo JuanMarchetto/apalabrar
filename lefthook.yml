@@ -21,7 +21,7 @@ pre-commit:
       stage_fixed: true
     js-eslint:
       glob: "*.{ts,tsx,js,jsx}"
-      run: pnpm eslint --max-warnings=0 {staged_files}
+      run: pnpm exec eslint --no-warn-ignored --max-warnings=0 {staged_files}
     js-typecheck:
       glob: "*.{ts,tsx}"
       run: pnpm turbo run typecheck
