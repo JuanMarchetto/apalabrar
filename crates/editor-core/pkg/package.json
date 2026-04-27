@@ -1,0 +1,25 @@
+{
+  "name": "apalabrar-editor-core",
+  "type": "module",
+  "collaborators": [
+    "Juan Patricio Marchetto <juanpatriciomarchetto@gmail.com>"
+  ],
+  "description": "Apalabrar editor core — umbrella public API.",
+  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apalabrar/apalabrar"
+  },
+  "files": [
+    "apalabrar_editor_core_bg.wasm",
+    "apalabrar_editor_core.js",
+    "apalabrar_editor_core.d.ts"
+  ],
+  "main": "apalabrar_editor_core.js",
+  "homepage": "https://apalabr.ar",
+  "types": "apalabrar_editor_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
