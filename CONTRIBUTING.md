@@ -233,3 +233,7 @@ This pact is signed in spirit by the maintainer and every contributor:
 > Discipline is the moat.
 
 That is all. Print it. Pin it. Welcome aboard.
+
+═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+✍️ Signed: Juan Patricio Marchetto, 2026-04-27
