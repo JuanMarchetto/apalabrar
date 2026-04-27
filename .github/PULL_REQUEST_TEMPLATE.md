@@ -15,7 +15,8 @@
 ## TDD discipline checklist (NON-NEGOTIABLE)
 
 - [ ] Tests were written **before** implementation (commit history shows RED-first)
-- [ ] **No test was modified solely to make it pass.** Modified tests are flagged below with rationale.
+- [ ] **No test was modified solely to make it pass.** Modified tests are flagged below with
+      rationale.
 - [ ] No `assert!(true)`, `assert_eq!(x, x)`, or other tautological assertions
 - [ ] No tests with mocked system-under-test (mocks only at external boundaries)
 - [ ] Edge cases covered: empty input, max input, error path, boundary numerical values
@@ -25,23 +26,23 @@
 ## Modified tests (if any)
 
 | File | Reason for modification |
-|---|---|
-|   |   |
+| ---- | ----------------------- |
+|      |                         |
 
 ## Coverage delta
 
-- Line coverage:    %  (Δ        )
-- Branch coverage:  %  (Δ        )
+- Line coverage: % (Δ )
+- Branch coverage: % (Δ )
 
 ## Mutation kill-rate (changed files only)
 
-- Kill rate:        %  (Δ        )
+- Kill rate: % (Δ )
 - Surviving mutations: (none / list with file:line + reason kept)
 
 ## Bundle size delta (if app touched)
 
-- Before:    KB compressed
-- After:     KB compressed
+- Before: KB compressed
+- After: KB compressed
 
 ## Manual verification
 
@@ -54,8 +55,7 @@
 
 ## Linked issues / docs
 
-Closes # (issue id)
-Blueprint section: (file + section if architectural)
+Closes # (issue id) Blueprint section: (file + section if architectural)
 
 ## Reviewer focus
 

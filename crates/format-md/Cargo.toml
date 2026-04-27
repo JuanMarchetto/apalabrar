@@ -1,18 +1,18 @@
 [package]
 name = "apalabrar-format-md"
 version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
+edition.workspace = true
+license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
 description = "Markdown read/write — pulldown-cmark + comrak for GFM extras."
 
 [dependencies]
-pulldown-cmark.workspace = true
 comrak.workspace = true
+pulldown-cmark.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-proptest.workspace = true
 insta.workspace = true
+proptest.workspace = true

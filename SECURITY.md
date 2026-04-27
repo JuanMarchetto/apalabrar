@@ -7,12 +7,14 @@ Please **do not** open a public GitHub issue for security-sensitive findings.
 Email: **juanpatriciomarchetto@gmail.com** with subject prefix `[SECURITY]`.
 
 Include:
+
 - Affected component (crate / package)
 - Affected versions
 - Reproduction steps
 - Impact assessment
 
-You should receive an acknowledgement within 7 days. Coordinated disclosure window is 90 days unless agreed otherwise.
+You should receive an acknowledgement within 7 days. Coordinated disclosure window is 90 days unless
+agreed otherwise.
 
 ## Scope
 
@@ -31,7 +33,10 @@ You should receive an acknowledgement within 7 days. Coordinated disclosure wind
 
 ## Secure design notes (informational)
 
-- Plugins run inside a WASM Component Model sandbox with capability-based interfaces. They have no DOM access by default.
-- AGPL components are never bundled in the client; they run as separate processes when present at all.
+- Plugins run inside a WASM Component Model sandbox with capability-based interfaces. They have no
+  DOM access by default.
+- AGPL components are never bundled in the client; they run as separate processes when present at
+  all.
 - All cloud sync is end-to-end encrypted before transmission (v1+).
-- BYO-key cloud AI: user's API keys are stored in OPFS (origin-isolated) and never sent to Apalabrar servers.
+- BYO-key cloud AI: user's API keys are stored in OPFS (origin-isolated) and never sent to Apalabrar
+  servers.

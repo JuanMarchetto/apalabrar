@@ -1,32 +1,32 @@
 [package]
 name = "apalabrar-editor-core"
 version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
-repository.workspace = true
+edition.workspace = true
 homepage.workspace = true
+license.workspace = true
 readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 description = "Apalabrar editor core — umbrella public API."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-apalabrar-doc-model.workspace = true
-apalabrar-layout.workspace = true
-apalabrar-format-docx.workspace = true
-apalabrar-format-md.workspace = true
-apalabrar-format-html.workspace = true
-apalabrar-citation.workspace = true
-apalabrar-plugin-host.workspace = true
 apalabrar-ai-bridge.workspace = true
-thiserror.workspace = true
+apalabrar-citation.workspace = true
+apalabrar-doc-model.workspace = true
+apalabrar-format-docx.workspace = true
+apalabrar-format-html.workspace = true
+apalabrar-format-md.workspace = true
+apalabrar-layout.workspace = true
+apalabrar-plugin-host.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 wasm-bindgen.workspace = true
 
 [dev-dependencies]
-proptest.workspace = true
 insta.workspace = true
+proptest.workspace = true
 wasm-bindgen-test.workspace = true
