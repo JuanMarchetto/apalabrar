@@ -3,11 +3,25 @@ import { describe, expect, it, test } from 'vitest';
 import { applyComposition } from './composition';
 
 // --- helpers ----------------------------------------------------------------
+//
+// happy-dom's CompositionEvent constructor accepts but does not honor the
+// `data` field — the resulting event has `data === undefined`. Patch it in
+// after construction so the unit tests faithfully model the browser shape.
 
-const start = (data = ''): CompositionEvent => new CompositionEvent('compositionstart', { data });
-const update = (data: string): CompositionEvent =>
-  new CompositionEvent('compositionupdate', { data });
-const end = (data: string): CompositionEvent => new CompositionEvent('compositionend', { data });
+const makeEvent = (
+  type: 'compositionstart' | 'compositionupdate' | 'compositionend',
+  data: string,
+) => {
+  const evt = new CompositionEvent(type, { data });
+  if (evt.data !== data) {
+    Object.defineProperty(evt, 'data', { value: data, configurable: true });
+  }
+  return evt;
+};
+
+const start = (data = ''): CompositionEvent => makeEvent('compositionstart', data);
+const update = (data: string): CompositionEvent => makeEvent('compositionupdate', data);
+const end = (data: string): CompositionEvent => makeEvent('compositionend', data);
 
 // All target precomposed (NFC) characters: validates that whichever path the
 // browser took to compose them, the result is a single code point.
