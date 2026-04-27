@@ -27,6 +27,7 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 
 [dev-dependencies]
+docx-rs.workspace = true
 insta.workspace = true
 proptest.workspace = true
 wasm-bindgen-test.workspace = true
