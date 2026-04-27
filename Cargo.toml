@@ -52,9 +52,8 @@ comrak = "0.29"
 html5ever = "0.29"
 quick-xml = "0.36"
 
-# Citation
-citeproc = "0.1"
-citeproc-io = "0.1"
+# Citation — citeproc-rs is not yet published to crates.io; the citation crate
+# will pull it in via git source when the engine is implemented (Prompt 2.x).
 
 # Errors
 thiserror = "1.0"
