@@ -62,11 +62,35 @@ fn apply_test_op(doc: &mut Doc, op: &TestOp) {
     }
 }
 
+/// Sample marks at every codepoint in a range. Helper for asserting mark
+/// equality across replicas.
+fn marks_along(doc: &Doc, range: Range<usize>) -> Vec<(usize, bool, bool)> {
+    range
+        .map(|pos| {
+            (
+                pos,
+                doc.has_mark(pos, Mark::Bold),
+                doc.has_mark(pos, Mark::Italic),
+            )
+        })
+        .collect()
+}
+
 proptest! {
-    #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
+    // 256 cases is the audit-time setting for fast iteration; the gate run
+    // (per the Validation Gate 3 prompt) bumps `cases` to 10_000. We also
+    // raise `max_local_rejects` so the rich-text mark prop, which uses
+    // `prop_assume!` to filter to overlapping ranges, doesn't fail
+    // spuriously on rejection saturation at scale.
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        max_local_rejects: 100_000,
+        ..ProptestConfig::default()
+    })]
 
     /// Convergence: two replicas that apply disjoint subsets of the same
-    /// op set and then exchange snapshots converge to equal text.
+    /// op set and then exchange snapshots converge to equal text AND
+    /// equal marks. Marks parity is sampled across the full text range.
     #[test]
     fn prop_two_replicas_converge_after_snapshot_exchange(
         ops in proptest::collection::vec(any_op(), 0..15),
@@ -86,11 +110,12 @@ proptest! {
         a.merge(&snap_b);
         b.merge(&snap_a);
         prop_assert_eq!(a.text(), b.text());
+        let len = a.text().chars().count();
+        prop_assert_eq!(marks_along(&a, 0..len), marks_along(&b, 0..len));
     }
 
     /// Idempotence: applying the same snapshot twice yields the same text
-    /// as applying it once. Both execution orders must converge to the
-    /// same observable state.
+    /// AND the same marks as applying it once.
     #[test]
     fn prop_merge_is_idempotent(
         ops in proptest::collection::vec(any_op(), 0..10),
@@ -109,31 +134,45 @@ proptest! {
         twice.merge(&snap);
 
         prop_assert_eq!(once.text(), twice.text());
+        let len = once.text().chars().count();
+        prop_assert_eq!(marks_along(&once, 0..len), marks_along(&twice, 0..len));
     }
 
-    /// Causal preservation: ops applied in order on a single replica are
-    /// faithfully reflected in the snapshot. A fresh replica created from
-    /// that snapshot ends up with the same observable text — i.e. local
-    /// causal order is not lost across the snapshot boundary.
+    /// Causal preservation across a 3-replica chain.
+    /// A applies an "anchor" insert at offset 0, exports.
+    /// B imports A, then applies a "follow-up" insert at the end of the
+    /// anchor, exports.
+    /// C imports B's snapshot — which transitively carries A's history.
+    /// C must observe both A's text and B's text in the order A→B; the
+    /// follow-up cannot appear without the anchor it depends on.
     #[test]
-    fn prop_causal_order_preserved_through_snapshot(
-        ops in proptest::collection::vec(any_op(), 1..10),
+    fn prop_three_replica_causal_chain_preserves_order(
+        anchor in "[a-z]{1,5}",
+        follow in "[a-z]{1,5}",
     ) {
-        let mut origin = Doc::new();
-        for op in &ops {
-            apply_test_op(&mut origin, op);
-        }
-        let target_text = origin.text();
-        let snap = origin.snapshot();
-        let receiver = Doc::from_snapshot(&snap);
-        prop_assert_eq!(receiver.text(), target_text);
+        let mut a = Doc::new();
+        a.insert(0, &anchor);
+        let snap_a = a.snapshot();
+
+        let mut b = Doc::from_snapshot(&snap_a);
+        // Append at end of A's text — depends on A having been merged.
+        let anchor_len = anchor.chars().count();
+        b.insert(anchor_len, &follow);
+        let snap_b = b.snapshot();
+
+        let c = Doc::from_snapshot(&snap_b);
+        let expected = format!("{anchor}{follow}");
+        prop_assert_eq!(c.text(), expected.clone(),
+            "C must see anchor+follow in causal order; got {:?} expected {:?}",
+            c.text(), expected);
     }
 
     /// Round-trip: a doc reconstructed from its own snapshot has the
-    /// same observable text as the original. (Stronger than a single-op
-    /// equivalent because the op sequence is randomised.)
+    /// same text AND marks as the original. Stronger than the unit
+    /// version because the op sequence (and thus the mark layout) is
+    /// randomised.
     #[test]
-    fn prop_snapshot_round_trip_preserves_text(
+    fn prop_snapshot_round_trip_preserves_text_and_marks(
         ops in proptest::collection::vec(any_op(), 0..15),
     ) {
         let mut original = Doc::new();
@@ -143,12 +182,17 @@ proptest! {
         let snap = original.snapshot();
         let restored = Doc::from_snapshot(&snap);
         prop_assert_eq!(restored.text(), original.text());
+        let len = original.text().chars().count();
+        prop_assert_eq!(marks_along(&original, 0..len), marks_along(&restored, 0..len));
     }
 
-    /// Rich-text mark concurrency: two replicas that fork from a shared
+    /// Rich-text mark concurrency: two replicas fork from a shared
     /// ancestor, apply Bold and Italic respectively over (possibly
-    /// overlapping) ranges, and then merge — both marks must be present
-    /// on every codepoint in the intersection of the two ranges.
+    /// overlapping) ranges, then merge. Both marks must be present on
+    /// every codepoint in the intersection. Additionally, codepoints
+    /// outside both ranges (the unmarked complement) must carry NEITHER
+    /// mark — guards against a Loro impl that over-applies marks during
+    /// merge.
     #[test]
     fn prop_concurrent_marks_both_apply_on_intersection(
         seed_text in "[a-z]{4,30}",
@@ -187,6 +231,21 @@ proptest! {
                 a.has_mark(pos, Mark::Italic),
                 "expected Italic at pos {pos}; ranges a=[{a_s},{a_e}) b=[{b_s},{b_e})"
             );
+        }
+
+        // Negative side: positions outside the union of both ranges must
+        // carry neither mark. (Guards against marks "leaking" during
+        // merge.)
+        let union_s = a_s.min(b_s);
+        let union_e = a_e.max(b_e);
+        for pos in 0..base_len {
+            if pos >= union_s && pos < union_e {
+                continue;
+            }
+            prop_assert!(!a.has_mark(pos, Mark::Bold),
+                "Bold leaked to pos {pos} outside union [{union_s},{union_e})");
+            prop_assert!(!a.has_mark(pos, Mark::Italic),
+                "Italic leaked to pos {pos} outside union [{union_s},{union_e})");
         }
     }
 }

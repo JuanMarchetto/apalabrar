@@ -107,3 +107,72 @@ fn merge_empty_doc_with_full_snapshot_yields_full_text() {
     receiver.merge(&snap);
     assert_eq!(receiver.text(), "hola");
 }
+
+// ---------- Unicode / LATAM coverage (the locked thesis) ----------
+
+#[test]
+fn multibyte_latam_text_round_trips_through_snapshot() {
+    // "Año mañana es el día 1°" mixes 1- and 2-byte UTF-8 codepoints.
+    // Codepoint count = 23; byte length = 27. The doc API operates on
+    // codepoints so insert(0, ...) + text() must reproduce the input
+    // byte-for-byte regardless of internal storage units.
+    let original = "Año mañana es el día 1°";
+    let mut d = Doc::new();
+    d.insert(0, original);
+    let snap = d.snapshot();
+    let restored = Doc::from_snapshot(&snap);
+    assert_eq!(restored.text(), original);
+}
+
+#[test]
+fn format_at_codepoint_offset_inside_multibyte_string_marks_correct_chars() {
+    // "café" — 4 codepoints (c, a, f, é). Format range 0..3 should mark
+    // 'c', 'a', 'f' but NOT 'é'. The codepoint-offset spec means we
+    // index by char position, not byte position.
+    let mut d = Doc::new();
+    d.insert(0, "café");
+    d.format(0..3, Mark::Bold);
+    assert!(
+        d.has_mark(0, Mark::Bold),
+        "'c' at codepoint 0 should be Bold"
+    );
+    assert!(
+        d.has_mark(1, Mark::Bold),
+        "'a' at codepoint 1 should be Bold"
+    );
+    assert!(
+        d.has_mark(2, Mark::Bold),
+        "'f' at codepoint 2 should be Bold"
+    );
+    assert!(
+        !d.has_mark(3, Mark::Bold),
+        "'é' at codepoint 3 should NOT be Bold"
+    );
+}
+
+// ---------- Clip-behavior contract (documented in lib.rs) ----------
+
+#[test]
+fn insert_past_doc_length_clips_to_end_without_panic() {
+    let mut d = Doc::new();
+    d.insert(0, "hi");
+    d.insert(999, "!"); // far past length 2 — must clip, not panic.
+    assert_eq!(d.text(), "hi!");
+}
+
+#[test]
+fn delete_past_doc_length_clips_to_end_without_panic() {
+    let mut d = Doc::new();
+    d.insert(0, "hi");
+    d.delete(0..999); // far past end — must clip, not panic.
+    assert_eq!(d.text(), "");
+}
+
+#[test]
+fn format_past_doc_length_clips_range_without_panic() {
+    let mut d = Doc::new();
+    d.insert(0, "hi");
+    d.format(0..999, Mark::Bold); // clip to 0..2 internally.
+    assert!(d.has_mark(0, Mark::Bold));
+    assert!(d.has_mark(1, Mark::Bold));
+}
