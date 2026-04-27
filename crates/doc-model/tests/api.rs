@@ -176,3 +176,54 @@ fn format_past_doc_length_clips_range_without_panic() {
     assert!(d.has_mark(0, Mark::Bold));
     assert!(d.has_mark(1, Mark::Bold));
 }
+
+#[test]
+fn format_with_empty_range_is_noop() {
+    // Empty range (start == end) must take the no-op short-circuit and
+    // not call into Loro's mark API, where an empty range would error.
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.format(2..2, Mark::Bold);
+    assert!(!d.has_mark(2, Mark::Bold));
+    assert!(!d.has_mark(0, Mark::Bold));
+}
+
+#[test]
+fn format_inverted_range_clips_to_empty_and_is_noop() {
+    // start > end is a degenerate input. apply_op clips it; format must
+    // accept the resulting empty range without panic. Variables avoid
+    // the compile-time-empty-range clippy lint while still exercising
+    // the clip path.
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    let start: usize = 4;
+    let end: usize = 1;
+    d.format(start..end, Mark::Bold);
+    assert!(!d.has_mark(2, Mark::Bold));
+}
+
+// ---------- has_mark fallthrough + Default ----------
+
+#[test]
+fn has_mark_past_doc_length_returns_false() {
+    let mut d = Doc::new();
+    d.insert(0, "hi");
+    d.format(0..2, Mark::Bold);
+    // pos == len: cursor position past last codepoint, not a character.
+    assert!(!d.has_mark(2, Mark::Bold));
+    // way past — same answer.
+    assert!(!d.has_mark(999, Mark::Bold));
+}
+
+#[test]
+fn has_mark_on_empty_doc_returns_false() {
+    let d = Doc::new();
+    assert!(!d.has_mark(0, Mark::Bold));
+}
+
+#[test]
+fn default_constructs_empty_doc_equivalent_to_new() {
+    let d: Doc = Default::default();
+    assert_eq!(d.text(), "");
+    assert!(!d.has_mark(0, Mark::Bold));
+}
