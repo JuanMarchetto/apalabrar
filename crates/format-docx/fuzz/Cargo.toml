@@ -1,0 +1,27 @@
+[package]
+name = "apalabrar-format-docx-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.apalabrar-format-docx]
+path = ".."
+
+[[bin]]
+name = "docx_read"
+path = "fuzz_targets/docx_read.rs"
+test = false
+doc = false
+bench = false
+
+# This crate is opt-in (fuzz-only); exclude it from the main workspace
+# resolution so `cargo build --workspace` doesn't try to compile it
+# without the +nightly toolchain.
+[workspace]
+members = ["."]
