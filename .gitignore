@@ -104,3 +104,4 @@ secrets/
 # Tooling caches
 .eslintcache
 .cache/
+.gstack/
