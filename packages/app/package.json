@@ -15,8 +15,21 @@
     "coverage:check": "vitest run --coverage --coverage.thresholds.lines=85 --coverage.thresholds.branches=75",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
+    "size-limit": "size-limit",
     "clean": "rm -rf dist .turbo node_modules"
   },
+  "size-limit": [
+    {
+      "name": "JS bundle (gzipped) — Validation Gate 2 cap 200 KB",
+      "path": "dist/assets/*.js",
+      "limit": "200 KB"
+    },
+    {
+      "name": "WASM core (gzipped) — Validation Gate 2 cap 4 MB target / 10 MB hard ceiling",
+      "path": "dist/assets/*.wasm",
+      "limit": "4 MB"
+    }
+  ],
   "dependencies": {
     "@apalabrar/editor-bridge": "workspace:*",
     "@apalabrar/ui": "workspace:*",

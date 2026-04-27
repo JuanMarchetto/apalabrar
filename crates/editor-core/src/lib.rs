@@ -17,6 +17,20 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DocId(u64);
 
+#[cfg(target_arch = "wasm32")]
+impl DocId {
+    /// Internal-only ctor used by the wasm bridge to reconstruct a handle
+    /// from a JS-side cookie.
+    pub(crate) fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// Internal-only accessor exposing the cookie value to the wasm bridge.
+    pub(crate) fn raw(self) -> u64 {
+        self.0
+    }
+}
+
 /// Editing operation against the plain-text projection of a document.
 ///
 /// Offsets are UTF-8 byte offsets into the plain-text projection.
@@ -188,6 +202,71 @@ fn validate_delete_range(text: &str, start: usize, end: usize) -> Result<(), Err
 /// char boundary, otherwise the slice indexing panics.
 fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
     text[..byte_offset].chars().count()
+}
+
+// -----------------------------------------------------------------------------
+// WASM bridge
+// -----------------------------------------------------------------------------
+//
+// Thin pass-through wrappers exposed via wasm-bindgen so the JS side of the
+// editor (the Solid shell) can drive the same API used by the Rust tests.
+// Gated on cfg(target_arch = "wasm32") so the host-side `cargo test` run
+// never sees the JS-only types. The wrappers are pure routing — every
+// behaviour they expose is already covered by the Rust integration suite,
+// so wasm-bindgen-test setup is intentionally deferred.
+//
+// IMPORTANT for Validation Gate 2: at least one wasm-bindgen export must
+// reach each of {open_docx, apply_op, to_docx, doc_text, close_doc} so
+// the WASM linker keeps the loro / docx-rs / doc-model code paths alive.
+// Otherwise dead-code elimination would strip them and the bundle-size
+// measurement would not reflect realistic editor cost.
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_api {
+    use wasm_bindgen::prelude::*;
+
+    use crate::{DocId, EditOp, Error, apply_op, close_doc, doc_text, open_docx, to_docx};
+
+    fn err(e: Error) -> JsValue {
+        JsValue::from_str(&e.to_string())
+    }
+
+    #[wasm_bindgen(js_name = openDocx)]
+    pub fn js_open_docx(bytes: &[u8]) -> Result<u64, JsValue> {
+        open_docx(bytes).map(DocId::raw).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = applyInsert)]
+    pub fn js_apply_insert(doc_id: u64, offset: usize, text: &str) -> Result<(), JsValue> {
+        apply_op(
+            DocId::from_raw(doc_id),
+            EditOp::InsertText {
+                offset,
+                text: text.into(),
+            },
+        )
+        .map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = applyDelete)]
+    pub fn js_apply_delete(doc_id: u64, start: usize, end: usize) -> Result<(), JsValue> {
+        apply_op(DocId::from_raw(doc_id), EditOp::DeleteRange { start, end }).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = toDocx)]
+    pub fn js_to_docx(doc_id: u64) -> Result<Vec<u8>, JsValue> {
+        to_docx(DocId::from_raw(doc_id)).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = docText)]
+    pub fn js_doc_text(doc_id: u64) -> Result<String, JsValue> {
+        doc_text(DocId::from_raw(doc_id)).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = closeDoc)]
+    pub fn js_close_doc(doc_id: u64) -> Result<(), JsValue> {
+        close_doc(DocId::from_raw(doc_id)).map_err(err)
+    }
 }
 
 #[cfg(test)]

@@ -14,6 +14,9 @@
     "lint": "eslint . --max-warnings=0",
     "clean": "rm -rf dist .turbo node_modules"
   },
+  "dependencies": {
+    "apalabrar-editor-core": "file:../../crates/editor-core/pkg"
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "^3.0.0",
     "typescript": "^5.6.0",
