@@ -8,6 +8,13 @@ ignore = [
     # transitively via comrak -> syntect. Re-evaluate when syntect drops it
     # or when we replace comrak.
     "RUSTSEC-2024-0320",
+    # atomic-polyfill is unmaintained (author deprecated it in favor of
+    # portable-atomic). Transitive via heapless -> postcard -> loro. No
+    # action available until heapless updates.
+    "RUSTSEC-2023-0089",
+    # bincode 1.x is unmaintained but the maintainers consider 1.3.3 a
+    # complete release; no security issue. Transitive via syntect.
+    "RUSTSEC-2025-0141",
 ]
 
 [licenses]
@@ -29,6 +36,8 @@ allow = [
     "CC0-1.0",
     "Zlib",
     "MPL-2.0",
+    # Boost Software License — permissive, OSI-approved. Used by xxhash-rust.
+    "BSL-1.0",
 ]
 
 [bans]
