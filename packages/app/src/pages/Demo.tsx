@@ -1,4 +1,4 @@
-import { closeDoc, docText, init, openDocx } from '@apalabrar/editor-bridge';
+import { closeDoc, docText, init, openDocx, wasmUrl } from '@apalabrar/editor-bridge';
 import { type Component, createSignal, onMount, Show } from 'solid-js';
 
 // Vite-import the canonical fixture from tests-corpus/. The `?url` suffix
@@ -13,7 +13,12 @@ export const Demo: Component = () => {
 
   onMount(async () => {
     try {
-      await init();
+      // Pass the wasm URL explicitly. The wasm-pack glue's default
+      // resolution (`new URL(..., import.meta.url)`) ends up pointing
+      // at the bundled JS chunk under Vite, not the .wasm asset, which
+      // makes the browser fetch index.html instead of the binary and
+      // throw "WebAssembly.instantiate(): expected magic word ...".
+      await init({ module_or_path: wasmUrl });
       const response = await fetch(sampleUrl);
       const bytes = new Uint8Array(await response.arrayBuffer());
       const docId = openDocx(bytes);
