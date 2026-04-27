@@ -187,41 +187,51 @@ proptest! {
     }
 
     /// Rich-text mark concurrency: two replicas fork from a shared
-    /// ancestor, apply Bold and Italic respectively over (possibly
-    /// overlapping) ranges, then merge. Both marks must be present on
-    /// every codepoint in the intersection. Additionally, codepoints
-    /// outside both ranges (the unmarked complement) must carry NEITHER
-    /// mark — guards against a Loro impl that over-applies marks during
-    /// merge.
+    /// ancestor, apply Bold and Italic respectively over overlapping
+    /// ranges, then merge. Both marks must be present on every
+    /// codepoint in the intersection. Additionally, codepoints outside
+    /// both ranges (the unmarked complement) must carry NEITHER mark —
+    /// guards against a Loro impl that over-applies marks during merge.
+    ///
+    /// Strategy design: ranges are anchored on a shared `center`
+    /// codepoint and constructed so that BOTH always contain `center`.
+    /// This guarantees a non-empty intersection by construction, so
+    /// the test needs no `prop_assume!` and never spills global
+    /// rejection budget at high case counts (the audit-phase concern
+    /// that surfaced at first GREEN run as "too many global rejects").
     #[test]
     fn prop_concurrent_marks_both_apply_on_intersection(
         seed_text in "[a-z]{4,30}",
-        a_start in 0usize..30,
-        a_len in 1usize..15,
-        b_start in 0usize..30,
-        b_len in 1usize..15,
+        center_choice in 0usize..30,
+        a_left in 0usize..10,
+        a_right in 1usize..10,
+        b_left in 0usize..10,
+        b_right in 1usize..10,
     ) {
         let mut base = Doc::new();
         base.insert(0, &seed_text);
         let base_len = seed_text.chars().count();
+        // base_len >= 4 by strategy regex.
+        let center = center_choice.min(base_len - 1);
+
+        let a_s = center.saturating_sub(a_left);
+        let a_e = (center + a_right).min(base_len);
+        let b_s = center.saturating_sub(b_left);
+        let b_e = (center + b_right).min(base_len);
+        // Invariant: a_s <= center < a_e and b_s <= center < b_e, so
+        // both ranges include `center` and the intersection contains
+        // at least that codepoint.
+
         let snap = base.snapshot();
         let mut a = Doc::from_snapshot(&snap);
         let mut b = Doc::from_snapshot(&snap);
-
-        let a_e = (a_start + a_len).min(base_len);
-        let a_s = a_start.min(a_e);
-        let b_e = (b_start + b_len).min(base_len);
-        let b_s = b_start.min(b_e);
-
-        prop_assume!(a_s < a_e && b_s < b_e);
-        let inter_s = a_s.max(b_s);
-        let inter_e = a_e.min(b_e);
-        prop_assume!(inter_s < inter_e);
 
         a.format(a_s..a_e, Mark::Bold);
         b.format(b_s..b_e, Mark::Italic);
         a.merge(&b.snapshot());
 
+        let inter_s = a_s.max(b_s);
+        let inter_e = a_e.min(b_e);
         for pos in inter_s..inter_e {
             prop_assert!(
                 a.has_mark(pos, Mark::Bold),
@@ -233,9 +243,9 @@ proptest! {
             );
         }
 
-        // Negative side: positions outside the union of both ranges must
-        // carry neither mark. (Guards against marks "leaking" during
-        // merge.)
+        // Negative side: positions outside the union of both ranges
+        // must carry neither mark. Guards against marks "leaking" past
+        // their intended span during merge.
         let union_s = a_s.min(b_s);
         let union_e = a_e.max(b_e);
         for pos in 0..base_len {
