@@ -1,0 +1,7 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(SINGLE_FOOTNOTE)
+---
+paragraph_count: 1
+paragraphs:
+  - Main paragraph with a footnote after the citation marker.

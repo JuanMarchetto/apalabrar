@@ -1,0 +1,17 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(HEADING_HIERARCHY)
+---
+paragraph_count: 11
+paragraphs:
+  - Heading One
+  - "Body paragraph following H1, single sentence."
+  - Heading Two
+  - Body paragraph following H2 with two sentences. The second sentence keeps the paragraph from being trivially short.
+  - Heading Three
+  - Body paragraph following H3.
+  - "First bullet item "
+  - "Second bullet item "
+  - "Third bullet item "
+  - Heading Four
+  - Final paragraph closing the document.

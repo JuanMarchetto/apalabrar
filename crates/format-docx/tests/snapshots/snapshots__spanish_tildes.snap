@@ -1,0 +1,13 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(SPANISH_TILDES)
+---
+paragraph_count: 7
+paragraphs:
+  - "Año nuevo, mañana es el día. Niño, ñoño, señor: la ñ es central."
+  - ""
+  - "Acentos: á, é, í, ó, ú, ü."
+  - ""
+  - "La cedilla portuguesa también: ç. Y los signos de apertura ¿ y ¡."
+  - ""
+  - "Mayúsculas con tilde: Ávila, Évora, Ítaca, Óxido, Único."
