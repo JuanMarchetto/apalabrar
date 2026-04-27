@@ -9,8 +9,6 @@ repository.workspace = true
 description = "Citation engine — citeproc-rs wrapper with CSL style cache and bibliography emitter."
 
 [dependencies]
-citeproc.workspace = true
-citeproc-io.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 
