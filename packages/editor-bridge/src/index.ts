@@ -18,4 +18,15 @@ export {
   toDocx,
 } from 'apalabrar-editor-core';
 
+// `wasmUrl` is the build-time URL of the .wasm binary. Vite intercepts
+// the `?url` suffix and emits the asset with a hashed filename in the
+// production bundle (and serves it directly in dev). Pass this URL to
+// `init({ module_or_path: wasmUrl })` to bypass the wasm-pack glue's
+// default `new URL(..., import.meta.url)` resolution, which Vite cannot
+// rewrite because the glue lives in node_modules and the URL points at
+// the bundled JS chunk rather than the .wasm asset (manifests as a
+// "magic word" CompileError where `<!DO` is the start of an SPA-fallback
+// `index.html` response).
+export { default as wasmUrl } from 'apalabrar-editor-core/apalabrar_editor_core_bg.wasm?url';
+
 export const VERSION = '0.0.0' as const;
