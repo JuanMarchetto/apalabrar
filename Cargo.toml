@@ -1,63 +1,63 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/editor-core",
+    "crates/ai-bridge",
+    "crates/citation",
     "crates/doc-model",
-    "crates/layout",
+    "crates/editor-core",
     "crates/format-docx",
-    "crates/format-md",
     "crates/format-html",
+    "crates/format-md",
     "crates/format-odt",
     "crates/format-rtf",
-    "crates/citation",
+    "crates/layout",
     "crates/plugin-host",
-    "crates/ai-bridge",
 ]
 
 [workspace.package]
 version = "0.0.0"
-edition = "2024"
-rust-version = "1.85"
-license = "MIT"
 authors = ["Juan Patricio Marchetto <juanpatriciomarchetto@gmail.com>"]
-repository = "https://github.com/apalabrar/apalabrar"
-homepage = "https://apalabr.ar"
-readme = "README.md"
-keywords = ["editor", "wasm", "crdt", "academic", "docx"]
 categories = ["text-editors", "wasm"]
+edition = "2024"
+homepage = "https://apalabr.ar"
+keywords = ["editor", "wasm", "crdt", "academic", "docx"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/apalabrar/apalabrar"
+rust-version = "1.85"
 
 [workspace.dependencies]
 # Internal crates
+apalabrar-ai-bridge = { path = "crates/ai-bridge", version = "0.0.0" }
+apalabrar-citation = { path = "crates/citation", version = "0.0.0" }
 apalabrar-doc-model = { path = "crates/doc-model", version = "0.0.0" }
-apalabrar-layout = { path = "crates/layout", version = "0.0.0" }
 apalabrar-format-docx = { path = "crates/format-docx", version = "0.0.0" }
-apalabrar-format-md = { path = "crates/format-md", version = "0.0.0" }
 apalabrar-format-html = { path = "crates/format-html", version = "0.0.0" }
+apalabrar-format-md = { path = "crates/format-md", version = "0.0.0" }
 apalabrar-format-odt = { path = "crates/format-odt", version = "0.0.0" }
 apalabrar-format-rtf = { path = "crates/format-rtf", version = "0.0.0" }
-apalabrar-citation = { path = "crates/citation", version = "0.0.0" }
+apalabrar-layout = { path = "crates/layout", version = "0.0.0" }
 apalabrar-plugin-host = { path = "crates/plugin-host", version = "0.0.0" }
-apalabrar-ai-bridge = { path = "crates/ai-bridge", version = "0.0.0" }
 
 # Core
-loro = "1.0"
-jumprope = "1.1"
-rustybuzz = "0.20"
 cosmic-text = "0.12"
+jumprope = "1.1"
+loro = "1.0"
+rustybuzz = "0.20"
 
 # Format
-docx-rs = "0.4"
-pulldown-cmark = "0.12"
 comrak = "0.29"
+docx-rs = "0.4"
 html5ever = "0.29"
+pulldown-cmark = "0.12"
 quick-xml = "0.36"
 
 # Citation — citeproc-rs is not yet published to crates.io; the citation crate
 # will pull it in via git source when the engine is implemented (Prompt 2.x).
 
 # Errors
-thiserror = "1.0"
 anyhow = "1.0"
+thiserror = "1.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -67,14 +67,14 @@ serde_json = "1.0"
 tokio = { version = "1.40", features = ["rt", "macros"] }
 
 # Dev / test
-proptest = "1.5"
-insta = { version = "1.40", features = ["yaml", "json"] }
 criterion = { version = "0.5", features = ["html_reports"] }
+insta = { version = "1.40", features = ["yaml", "json"] }
+proptest = "1.5"
 
 # WASM
+js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-test = "0.3"
-js-sys = "0.3"
 web-sys = "0.3"
 
 [profile.release]

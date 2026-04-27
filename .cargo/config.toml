@@ -8,22 +8,24 @@
 
 [target.wasm32-unknown-unknown]
 rustflags = [
-    "-C", "target-feature=+bulk-memory,+mutable-globals,+nontrapping-fptoint,+sign-ext,+simd128",
-    "-C", "link-arg=--export-table",
+    "-C",
+    "target-feature=+bulk-memory,+mutable-globals,+nontrapping-fptoint,+sign-ext,+simd128",
+    "-C",
+    "link-arg=--export-table",
 ]
 
 [alias]
 # Convenience aliases — match CI commands.
-xtest      = "test --workspace --all-features"
-xclippy    = "clippy --workspace --all-targets --all-features -- -D warnings"
-xfmt       = "fmt --all"
+xtest = "test --workspace --all-features"
+xclippy = "clippy --workspace --all-targets --all-features -- -D warnings"
+xfmt = "fmt --all"
 xfmt-check = "fmt --all -- --check"
-xdoc       = "doc --workspace --no-deps --all-features"
-xcov       = "llvm-cov --workspace --lcov --output-path target/lcov.info"
+xdoc = "doc --workspace --no-deps --all-features"
+xcov = "llvm-cov --workspace --lcov --output-path target/lcov.info"
 
 [net]
 git-fetch-with-cli = true
 
 [term]
 verbose = false
-color   = "auto"
+color = "auto"

@@ -1,19 +1,19 @@
 [package]
 name = "apalabrar-format-docx"
 version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
+edition.workspace = true
+license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
 description = "DOCX read/write with lossless OOXML preservation (the moat)."
 
 [dependencies]
 docx-rs.workspace = true
 quick-xml.workspace = true
-thiserror.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-proptest.workspace = true
 insta = { workspace = true, features = ["yaml", "json"] }
+proptest.workspace = true

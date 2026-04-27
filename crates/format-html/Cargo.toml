@@ -1,11 +1,11 @@
 [package]
 name = "apalabrar-format-html"
 version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
+edition.workspace = true
+license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
 description = "HTML import + export (controlled subset on save)."
 
 [dependencies]
@@ -13,5 +13,5 @@ html5ever.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-proptest.workspace = true
 insta.workspace = true
+proptest.workspace = true

@@ -9,18 +9,18 @@ module.exports = {
       2,
       'always',
       [
-        'feat',     // new feature
-        'fix',      // bug fix
-        'docs',     // documentation only
-        'style',    // formatting, missing semicolons, etc
+        'feat', // new feature
+        'fix', // bug fix
+        'docs', // documentation only
+        'style', // formatting, missing semicolons, etc
         'refactor', // refactor without behavior change
-        'perf',     // performance improvement
-        'test',     // adding/correcting tests
-        'build',    // build system, dependencies
-        'ci',       // CI configuration
-        'chore',    // routine task (no source/test change)
-        'revert',   // revert prior commit
-        'release',  // release commit
+        'perf', // performance improvement
+        'test', // adding/correcting tests
+        'build', // build system, dependencies
+        'ci', // CI configuration
+        'chore', // routine task (no source/test change)
+        'revert', // revert prior commit
+        'release', // release commit
       ],
     ],
     'subject-case': [2, 'never', ['upper-case', 'pascal-case', 'start-case']],

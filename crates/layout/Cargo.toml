@@ -1,22 +1,22 @@
 [package]
 name = "apalabrar-layout"
 version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-license.workspace = true
 authors.workspace = true
+edition.workspace = true
+license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
 description = "Layout engine — paged layout, line breaking, text shaping (rustybuzz + cosmic-text)."
 
 [dependencies]
-rustybuzz.workspace = true
 cosmic-text.workspace = true
+rustybuzz.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-proptest.workspace = true
-insta.workspace = true
 criterion.workspace = true
+insta.workspace = true
+proptest.workspace = true
 
 [[bench]]
 name = "layout_bench"
