@@ -16,8 +16,8 @@ pre-commit:
       glob: "*.rs"
       run: cargo test --workspace --lib --quiet
     js-format:
-      glob: "*.{ts,tsx,js,jsx,json,md,toml,yml,yaml}"
-      run: dprint check {staged_files}
+      glob: "*.{ts,tsx,js,jsx,json,md,toml}"
+      run: pnpm exec dprint check {staged_files}
       stage_fixed: true
     js-eslint:
       glob: "*.{ts,tsx,js,jsx}"

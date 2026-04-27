@@ -34,9 +34,7 @@
     "**/*.{ts,tsx,js,jsx,mjs,cjs}",
     "**/*.json",
     "**/*.md",
-    "**/*.toml",
-    "**/*.yml",
-    "**/*.yaml"
+    "**/*.toml"
   ],
 
   "excludes": [
