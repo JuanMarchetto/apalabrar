@@ -12,10 +12,12 @@
 // `ñ` is always the precomposed U+00F1, never `n` + U+0303 combining tilde.
 // This matters for length comparisons, search, and round-trip with OOXML.
 
-function todo(..._args: unknown[]): never {
-  throw new Error('not implemented');
-}
-
 export function applyComposition(prev: string, evt: CompositionEvent): string {
-  return todo(prev, evt);
+  // Tentative events (compositionstart, compositionupdate) never mutate the
+  // committed string; only compositionend commits. Empty data on
+  // compositionend means the composition was cancelled (e.g., backspace).
+  if (evt.type !== 'compositionend' || !evt.data) {
+    return prev;
+  }
+  return (prev + evt.data).normalize('NFC');
 }
