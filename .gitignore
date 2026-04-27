@@ -1,0 +1,106 @@
+# =============================================================================
+# Rust
+# =============================================================================
+target/
+**/*.rs.bk
+*.pdb
+Cargo.lock.bak
+
+# cargo-mutants
+mutants.out*/
+
+# cargo-llvm-cov
+*.profraw
+lcov.info
+coverage/
+codecov-coverage/
+
+# cargo-fuzz
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+
+# wasm-pack output
+pkg/
+
+# =============================================================================
+# Node / pnpm
+# =============================================================================
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml.bak
+
+# Build outputs
+dist/
+build/
+out/
+.output/
+.next/
+.solid/
+.tsbuildinfo
+*.tsbuildinfo
+
+# Turbo
+.turbo/
+
+# Vite
+.vite/
+vite.config.*.timestamp-*
+
+# =============================================================================
+# Test artifacts
+# =============================================================================
+playwright-report/
+test-results/
+test-output/
+.nyc_output/
+
+# Snapshot accept files
+**/*.snap.new
+
+# =============================================================================
+# Editors / IDEs
+# =============================================================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.swp
+*.swo
+*~
+.netrwhist
+.history/
+
+# JetBrains
+*.iml
+
+# =============================================================================
+# OS
+# =============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =============================================================================
+# Misc / secrets
+# =============================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+.secrets/
+
+# Tooling caches
+.eslintcache
+.cache/

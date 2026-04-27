@@ -1,0 +1,29 @@
+# Cargo configuration for Apalabrar
+# Defaults for the wasm32 target so `cargo build --target wasm32-unknown-unknown`
+# uses sane RUSTFLAGS without forcing every developer to remember them.
+
+[build]
+# Default target left unset so plain `cargo test` runs on host.
+# Use `cargo build --target wasm32-unknown-unknown` for WASM artifacts.
+
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "-C", "target-feature=+bulk-memory,+mutable-globals,+nontrapping-fptoint,+sign-ext,+simd128",
+    "-C", "link-arg=--export-table",
+]
+
+[alias]
+# Convenience aliases — match CI commands.
+xtest      = "test --workspace --all-features"
+xclippy    = "clippy --workspace --all-targets --all-features -- -D warnings"
+xfmt       = "fmt --all"
+xfmt-check = "fmt --all -- --check"
+xdoc       = "doc --workspace --no-deps --all-features"
+xcov       = "llvm-cov --workspace --lcov --output-path target/lcov.info"
+
+[net]
+git-fetch-with-cli = true
+
+[term]
+verbose = false
+color   = "auto"

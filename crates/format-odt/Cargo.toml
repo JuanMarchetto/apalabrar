@@ -1,0 +1,17 @@
+[package]
+name = "apalabrar-format-odt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "ODT (OpenDocument Text) read/write. Stub for v0; lit in v1."
+
+[dependencies]
+quick-xml.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+insta.workspace = true
