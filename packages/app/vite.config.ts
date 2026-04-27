@@ -29,7 +29,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
-      exclude: ['**/node_modules/**', '**/dist/**', '**/*.config.*'],
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/*.config.*',
+        // Bootstrap entry: just calls render(); no testable logic.
+        'src/main.tsx',
+        // Test setup: registers jest-dom matchers.
+        'src/test-setup.ts',
+      ],
     },
   },
 });
