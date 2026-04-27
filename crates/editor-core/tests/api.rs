@@ -168,6 +168,61 @@ fn apply_op_inserts_multibyte_at_byte_offset_aligned_with_char_boundary() {
     assert_eq!(doc_text(id).unwrap(), "café!");
 }
 
+#[test]
+fn to_docx_round_trips_multibyte_latam_text() {
+    // Multibyte through the full OOXML serialize -> reparse cycle.
+    // Doc-model already covers snapshot round-trip; this test guards
+    // editor-core's byte<->codepoint translation under to_docx.
+    let original = "Año mañana es el día 1°";
+    let bytes = build_minimal_docx(original);
+    let id = open_docx(&bytes).unwrap();
+    let serialized = to_docx(id).unwrap();
+    let id2 = open_docx(&serialized).unwrap();
+    assert_eq!(doc_text(id2).unwrap(), original);
+}
+
+#[test]
+fn to_docx_after_delete_round_trips_remaining_text() {
+    // Round-trip after a structural delete — independent from the
+    // existing "after insert" round-trip test.
+    let bytes = build_minimal_docx("hello world");
+    let id = open_docx(&bytes).unwrap();
+    apply_op(id, EditOp::DeleteRange { start: 5, end: 11 }).unwrap();
+    let serialized = to_docx(id).unwrap();
+    let id2 = open_docx(&serialized).unwrap();
+    assert_eq!(doc_text(id2).unwrap(), "hello");
+}
+
+// ---------- Multi-doc registry isolation ----------
+
+#[test]
+fn two_open_docs_have_independent_state() {
+    // The DocId registry is the most distinctive bit of the API — a
+    // buggy impl that routes every call through a single global doc
+    // would still pass every other test. This guards against that.
+    let id_a = open_docx(&build_minimal_docx("alpha")).unwrap();
+    let id_b = open_docx(&build_minimal_docx("beta")).unwrap();
+    assert_ne!(id_a, id_b, "DocIds must be distinct across opens");
+
+    apply_op(
+        id_a,
+        EditOp::InsertText {
+            offset: 5,
+            text: "!".into(),
+        },
+    )
+    .unwrap();
+
+    // Mutating A must not affect B.
+    assert_eq!(doc_text(id_a).unwrap(), "alpha!");
+    assert_eq!(doc_text(id_b).unwrap(), "beta");
+
+    // Closing A must not affect B.
+    close_doc(id_a).unwrap();
+    assert_eq!(doc_text(id_b).unwrap(), "beta");
+    assert!(matches!(doc_text(id_a), Err(Error::UnknownDoc(_))));
+}
+
 // ---------- Error cases ----------
 
 #[test]
@@ -346,10 +401,13 @@ proptest! {
     }
 
     /// Serializing then re-opening the document preserves the plain-text
-    /// projection. This is the OOXML round-trip invariant for unedited docs.
+    /// projection. This is the OOXML round-trip invariant for unedited
+    /// docs. The regex deliberately includes LATAM accents so the
+    /// property exercises the byte<->codepoint translation under
+    /// random-ish multibyte input, not just ASCII.
     #[test]
     fn prop_serialize_then_open_preserves_doc_text(
-        seed in "[a-zA-Z0-9 ]{0,30}",
+        seed in "[a-zA-Z0-9áéíóúüñçÁÉÍÓÚÜÑÇ ]{0,30}",
     ) {
         let bytes = build_minimal_docx(&seed);
         let id = open_docx(&bytes).unwrap();
