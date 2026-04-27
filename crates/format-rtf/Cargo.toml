@@ -1,0 +1,16 @@
+[package]
+name = "apalabrar-format-rtf"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "RTF read/write. Stub for v0; lit in v1."
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+insta.workspace = true

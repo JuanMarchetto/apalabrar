@@ -1,0 +1,50 @@
+# Apalabrar pre-commit hooks (lefthook)
+# Discipline tier 1 — fast checks; the wall the CI duplicates exhaustively.
+# Section 10 of tdd-execution-plan.md is canonical.
+
+pre-commit:
+  parallel: true
+  commands:
+    rust-fmt:
+      glob: "*.rs"
+      run: cargo fmt -- --check {staged_files}
+      stage_fixed: true
+    rust-clippy:
+      glob: "*.rs"
+      run: cargo clippy --workspace --all-targets --quiet -- -D warnings
+    rust-test-quick:
+      glob: "*.rs"
+      run: cargo test --workspace --lib --quiet
+    js-format:
+      glob: "*.{ts,tsx,js,jsx,json,md,toml,yml,yaml}"
+      run: dprint check {staged_files}
+      stage_fixed: true
+    js-eslint:
+      glob: "*.{ts,tsx,js,jsx}"
+      run: pnpm eslint --max-warnings=0 {staged_files}
+    js-typecheck:
+      glob: "*.{ts,tsx}"
+      run: pnpm turbo run typecheck
+    secrets-scan:
+      run: |
+        if git diff --cached | grep -E "(api[_-]?key|secret|password|token)\s*=\s*['\"][^'\"]{16,}['\"]" -i; then
+          echo "Possible secret detected in staged changes."
+          exit 1
+        fi
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm commitlint --edit {1}
+
+pre-push:
+  parallel: false
+  commands:
+    rust-test-full:
+      run: cargo test --workspace --all-features
+    js-test-full:
+      run: pnpm turbo run test
+    coverage-floor:
+      run: cargo llvm-cov --workspace --fail-under-lines 0
+      # NOTE: coverage threshold raised in CI as code matures.
+      # Local pre-push uses 0 to avoid blocking exploration; CI is the wall.

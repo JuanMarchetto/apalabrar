@@ -1,0 +1,19 @@
+[package]
+name = "apalabrar-doc-model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Document model — Loro CRDT wrapper with rich-text + comments + suggestions."
+
+[dependencies]
+loro.workspace = true
+jumprope.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+insta.workspace = true

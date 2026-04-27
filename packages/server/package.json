@@ -1,0 +1,13 @@
+{
+  "name": "@apalabrar/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sync + auth server (Axum). Activated in v1; placeholder in v0.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "echo 'server stubbed for v0' && exit 0",
+    "typecheck": "echo 'no TS in server (Rust)' && exit 0",
+    "clean": "echo 'noop'"
+  }
+}
