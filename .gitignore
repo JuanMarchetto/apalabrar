@@ -20,8 +20,17 @@ fuzz/target/
 fuzz/corpus/
 fuzz/artifacts/
 
-# wasm-pack output
+# wasm-pack output — `crates/editor-core/pkg/` is intentionally TRACKED so
+# fresh checkouts and CI can `pnpm install` without first running
+# `wasm-pack build` (the editor-bridge package depends on the pkg as a
+# `file:` source). Other `pkg/` directories elsewhere in the workspace
+# (none today) remain ignored.
 pkg/
+!crates/editor-core/pkg/
+!crates/editor-core/pkg/**
+# wasm-pack regenerates a `pkg/.gitignore` containing `*` on every build;
+# keep that file ignored so we don't accidentally re-track it.
+crates/editor-core/pkg/.gitignore
 
 # =============================================================================
 # Node / pnpm

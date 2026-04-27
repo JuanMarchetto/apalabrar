@@ -15,6 +15,9 @@ export default tseslint.config(
       '**/playwright-report/**',
       '**/test-results/**',
       '**/*.config.{js,mjs,cjs,ts}',
+      // wasm-pack output is committed (so CI can pnpm install) but it is
+      // a generated artifact — never our code, no lint signal.
+      'crates/editor-core/pkg/**',
     ],
   },
   js.configs.recommended,
