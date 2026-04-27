@@ -13,6 +13,7 @@ docx-rs.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 insta = { workspace = true, features = ["yaml", "json"] }

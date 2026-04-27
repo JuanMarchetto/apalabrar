@@ -51,6 +51,7 @@ docx-rs = "0.4"
 html5ever = "0.29"
 pulldown-cmark = "0.12"
 quick-xml = "0.36"
+zip = "0.6"
 
 # Citation — citeproc-rs is not yet published to crates.io; the citation crate
 # will pull it in via git source when the engine is implemented (Prompt 2.x).
