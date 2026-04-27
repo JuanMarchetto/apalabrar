@@ -10,7 +10,17 @@ export default defineConfig({
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
+    fs: {
+      // Allow Vite to read fixtures from the repo-wide tests-corpus/
+      // directory (lives outside packages/app/). Bundled assets land
+      // back in packages/app/dist/ at build time.
+      allow: ['..', '../..'],
+    },
   },
+  // Vite needs to recognise .docx as an asset import target so
+  // `import url from '...sample.docx?url'` emits the file rather than
+  // failing the parse step.
+  assetsInclude: ['**/*.docx'],
   build: {
     target: 'es2022',
     sourcemap: true,
