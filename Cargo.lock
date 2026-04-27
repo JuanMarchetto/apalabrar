@@ -136,6 +136,7 @@ dependencies = [
  "apalabrar-format-md",
  "apalabrar-layout",
  "apalabrar-plugin-host",
+ "docx-rs",
  "insta",
  "proptest",
  "serde",
