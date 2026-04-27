@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.claude/prompts/` — TDD prompt templates for pair-programming with Claude.
 - ATTRIBUTION.md, CONTRIBUTING.md (with Founder Discipline Pact),
   CODE_OF_CONDUCT.md (Contributor Covenant 2.1), SECURITY.md.
+- Validation Gate 1 (LATAM dead-key composition):
+  `applyComposition(prev, evt)` for ñ/á/é/í/ó/ú/ü/ç/ã with NFC normalization;
+  `ComposingEditor` Solid component wired to compositionstart/end + beforeInput
+  controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
+  tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
+  invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
 
 ### Changed
 
