@@ -1,0 +1,7 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(SIMPLE_PARAGRAPH)
+---
+paragraph_count: 1
+paragraphs:
+  - "This is a single paragraph fixture for the OOXML round-trip moat test. It contains exactly one paragraph of plain text with no headings, lists, tables, or character formatting. The downstream test asserts that read followed by write yields byte-equivalent OOXML after whitespace and attribute-order normalization."
