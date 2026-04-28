@@ -28,6 +28,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.2 — doc-model comments + suggestions (Phase C —
+  InsertComment / Suggest / AcceptSuggestion): the
+  `apalabrar-doc-model` crate gains comment-thread and
+  track-changes-style suggestion handling. Three more variants
+  promote out of `Err(NotYetImplemented(..))` — only the Phase D
+  citation + footnote variants remain deferred. Comments live in a
+  root `LoroMap` named `"comments"` keyed by `thread_id`; each value
+  is a sub-`LoroMap` with `from`/`to` (I64 codepoint positions) and
+  `body` fields. Suggestions live in a parallel `"suggestions"`
+  `LoroMap` keyed by suggestion id with `from`/`to`/`replacement`/
+  `state` fields; state cycles `pending → accepted` (the
+  `rejected` string and `SuggestionState::Rejected` variant are
+  reserved for a future `RejectSuggestion` op the blueprint will
+  add). ID generation uses a persistent `"meta"` `LoroMap` of
+  monotonically-increasing i64 counters keyed by op kind; ids are
+  formatted `{prefix}-{peer_id_hex}-{counter}` so they survive
+  snapshot round-trips and never collide across peers. The
+  generated id is exposed on the `Doc` instance via transient
+  `last_comment_thread_id()` / `last_suggestion_id()` accessors so
+  callers don't need a different return shape on `apply_edit_op` —
+  they read it immediately after the op. `Doc::comment_thread_ids
+  ()` / `Doc::suggestion_ids()` (sorted) and `Doc::pending_suggestion_ids
+  ()` round out the read API alongside per-id `Doc::comment(id)` /
+  `Doc::suggestion(id)`. `EditOp::AcceptSuggestion` is idempotent on
+  already-accepted records and returns `Err(Error::SuggestionNotFound
+  (id))` — a new `#[non_exhaustive]` Error variant — for unknown ids.
+  Anchor caveat: positions are RAW codepoints, so anchors go stale
+  if surrounding text is edited. Phase C+ will migrate to Loro-
+  cursor-based stable anchors when the public Loro 1.12 surface is
+  extended (`Cursor`/`Side` are not currently `pub use`-exported).
+  Phase A's three `*_returns_not_yet_implemented` tests for these
+  variants were rewritten as happy-path tests; the deferred-variants
+  property + sweep now only cover the 2 still-deferred Phase D ops.
+  87 GREEN edit-op tests (+ 3 lib unit tests for
+  `state_to_str`/`str_to_state` round-trip and the strictly-
+  increasing-counter pin), totalling 115 in the doc-model crate
+  (Phase B was 93). cargo-mutants kills 124/125 = **99.20 %** on the
+  moat layer; the single survivor is the equivalent mutant in
+  `handle_split_block` carried over from Phase B and already
+  documented inline. cargo-llvm-cov reports 97.29 % region / 98.17 %
+  line; the 9 uncovered lines are all intentional defensive arms
+  (`has_mark` per-Loro-contract, malformed-entry fall-throughs in
+  the `read_*_field` helpers + comment/suggestion accessors, and
+  the `let-else` no-newline-found fallback in `handle_merge_blocks`).
+  Phase D (citations + footnotes — variants 10-11) remains
+  deferred; resumption plan lives in the project memory.
 - Phase 2 prompt 2.2 — doc-model block model (Phase B — InsertBlock /
   SplitBlock / MergeBlocks): the `apalabrar-doc-model` crate grows a
   block-aware layer on top of the Phase A `EditOp` dispatcher. The
