@@ -27,6 +27,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.4 — EditOp dispatcher producing `RenderDelta`:
+  `apalabrar-editor-core` gains a `dispatch` module with the
+  signature `pub fn dispatch(doc: &mut Doc, op: EditOp) ->
+  Result<RenderDelta, Error>`. `RenderDelta` carries the seam
+  between "apply this op" and "tell the renderer what changed":
+  `dirty_blocks: BlockRange { start, end }` (half-open block-index
+  range to reflow), `structural: bool` (true when block_count
+  changed — pagination/scroll invalidation hint), `caret_hint:
+  Option<Position>` (codepoint position for the caret post-op,
+  `None` for `FormatRange` / `InsertComment` / `Suggest` /
+  `AcceptSuggestion` which don't move the caret), and `minted_id:
+  Option<MintedId>` (annotation id minted by `InsertComment` /
+  `Suggest` / `InsertCitation` / `InsertFootnote` so the UI can
+  attach without re-querying). `RenderDelta::NOOP` is the sentinel
+  for clip-defensive no-ops (empty text insert, zero-width range,
+  inverted `from > to`, non-adjacent merge). The dispatcher
+  mirrors doc-model clip semantics (`from > to` is no-op, not a
+  swap). Doc-model errors propagate as `Error::EditOpFailed { kind,
+  reason }` carrying the variant name + the doc-model error's
+  `Display` so JS callers can branch without exhaustive matches.
+  42 host-side contract tests (`crates/editor-core/tests/dispatch.rs`):
+  3 sentinel constants + 7 InsertText + 5 DeleteRange + 3 FormatRange
+  + 3 InsertBlock + 3 SplitBlock + 3 MergeBlocks + 2 InsertComment
+  + 1 Suggest + 4 AcceptSuggestion + 2 InsertCitation + 2 InsertFootnote
+  + 3 proptest properties (64 cases each: dispatch is total, doc
+  remains consistent, dirty range is well-formed). cargo-mutants
+  on `dispatch.rs`: **61 caught / 0 missed / 1 unviable = 100 %
+  kill** on viable mutations. cargo-llvm-cov: **100 % function
+  / 99.29 % line / 97.75 % region** (the 2 missed lines are
+  defensive `?`-error-propagation arms on `apply()` calls for
+  `InsertComment` and `Suggest`, where the doc-model handlers
+  never error in practice — kept for forward compatibility).
 - Phase 2 prompt 2.3 — JS↔Rust bridge (`ApalabrarCore`): the
   `apalabrar-editor-core` crate gains a `bridge` module that
   exposes the doc-model `EditOp` surface (the full 11-variant
