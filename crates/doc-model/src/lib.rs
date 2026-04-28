@@ -7,6 +7,7 @@ use loro::{
     Container, ExportMode, LoroDoc, LoroListValue, LoroMap, LoroMapValue, LoroMovableList,
     LoroText, LoroValue, TextDelta, ValueOrContainer,
 };
+use serde::{Deserialize, Serialize};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -123,7 +124,7 @@ const FOOTNOTE_MARKER: char = '\u{E001}';
 
 /// Inline character formatting marks. Apalabrar v0 ships Bold + Italic;
 /// later phases will extend this enum with Underline / Strike / Code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Mark {
     Bold,
     Italic,
@@ -761,7 +762,8 @@ impl Default for Doc {
 /// Block-level node kind. Mirrors `apalabrar-layout::BlockKind` but
 /// serialised at the CRDT level (the layout engine projects from a
 /// snapshot of this).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum BlockKind {
     /// Body paragraph.
     Paragraph,
@@ -774,7 +776,7 @@ pub enum BlockKind {
 /// Block-level node. Phase A uses this only as the value type of
 /// `EditOp::InsertBlock`; Phase B introduces the corresponding Loro
 /// container in the doc model.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     pub kind: BlockKind,
     pub text: String,
@@ -784,7 +786,7 @@ pub struct Block {
 /// general case is recursive (footnotes containing footnotes), but
 /// Phase A keeps it flat — Phase D will switch to a recursive
 /// representation when the BlockTree gets its own Loro model.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BlockTree {
     pub blocks: Vec<Block>,
 }
@@ -794,7 +796,7 @@ pub struct BlockTree {
 /// surrounding text is edited. Phase C+ will replace this with
 /// Loro-cursor-based stable anchors when the public Cursor API is
 /// available (loro 1.12 hides Cursor / Side from `pub use`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Comment {
     pub thread_id: String,
     pub from: Position,
@@ -806,7 +808,7 @@ pub struct Comment {
 /// `Pending`; `AcceptSuggestion` flips to `Accepted` and applies the
 /// text replacement. `Rejected` is reserved for a future
 /// `RejectSuggestion` variant — Phase C v0 only ships accept.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SuggestionState {
     Pending,
     Accepted,
@@ -815,7 +817,7 @@ pub enum SuggestionState {
 
 /// Snapshot of a suggestion record (Phase C). Same anchor caveat
 /// as `Comment`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Suggestion {
     pub id: String,
     pub from: Position,
@@ -829,7 +831,7 @@ pub struct Suggestion {
 /// `at` is the codepoint position of that marker. `key` is the CSL
 /// citation key (eg. "Smith2020"). Position anchors are RAW codepoints
 /// — same staleness caveat as `Comment` and `Suggestion`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Citation {
     pub id: String,
     pub at: Position,
@@ -841,17 +843,19 @@ pub struct Citation {
 /// of the footnote contents. v0 keeps the tree flat (no nested
 /// footnotes); the recursive case ships when layout / OOXML round-
 /// trip requires it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Footnote {
     pub id: String,
     pub at: Position,
     pub body: BlockTree,
 }
 
-/// Cross-boundary edit verb. Variants 1-3 (`InsertText`,
-/// `DeleteRange`, `FormatRange`) are implemented; the remaining
-/// eight return `Error::NotYetImplemented`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Cross-boundary edit verb. All 11 variants are implemented as of
+/// Phase 2.2 Phase D. The serde shape uses `tag = "kind"` so the JS
+/// bridge serialises ops as `{kind: "InsertText", at, text, marks}`
+/// matching the blueprint's Section G TypeScript declaration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
 pub enum EditOp {
     /// Insert `text` at `at`, optionally applying `marks` to the
     /// inserted span. An empty `text` is a no-op (no marks fire).
