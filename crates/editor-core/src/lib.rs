@@ -7,6 +7,8 @@ use std::sync::{Mutex, OnceLock};
 
 use thiserror::Error;
 
+pub mod bridge;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Opaque handle to an opened document held in the in-WASM document registry.
@@ -63,6 +65,16 @@ pub enum Error {
     },
     #[error("OOXML serialization failed: {reason}")]
     SerializeFailed { reason: String },
+    /// `bridge::apply_edit_op_json` couldn't parse the incoming JSON
+    /// into a doc-model `EditOp`. Phase 2.3 introduces this variant.
+    #[error("EditOp JSON parse failed: {reason}")]
+    JsonParseFailed { reason: String },
+    /// The doc-model dispatcher returned an error (eg. AcceptSuggestion
+    /// with an unknown id). Carries the variant name + a human-readable
+    /// reason so JS callers can branch without re-deriving doc-model
+    /// internals.
+    #[error("EditOp dispatch failed for {kind}: {reason}")]
+    EditOpFailed { kind: String, reason: String },
 }
 
 // -----------------------------------------------------------------------------
@@ -73,18 +85,18 @@ pub enum Error {
 // because the WASM bridge uses free functions (no `&self`); JS callers
 // thread their handle through every call. AtomicU64 hands out monotonic ids.
 
-struct Document {
-    doc: apalabrar_doc_model::Doc,
+pub(crate) struct Document {
+    pub(crate) doc: apalabrar_doc_model::Doc,
 }
 
 static REGISTRY: OnceLock<Mutex<HashMap<u64, Document>>> = OnceLock::new();
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-fn registry() -> &'static Mutex<HashMap<u64, Document>> {
+pub(crate) fn registry() -> &'static Mutex<HashMap<u64, Document>> {
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn allocate_id() -> u64 {
+pub(crate) fn allocate_id() -> u64 {
     NEXT_ID.fetch_add(1, Ordering::Relaxed)
 }
 

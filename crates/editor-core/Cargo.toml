@@ -23,6 +23,7 @@ apalabrar-format-md.workspace = true
 apalabrar-layout.workspace = true
 apalabrar-plugin-host.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 

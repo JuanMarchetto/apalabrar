@@ -46,4 +46,20 @@ export {
 export { MemoryStorage } from './storage-memory';
 export { OpfsStorage } from './storage-opfs';
 
+// Phase 2.3 — JS↔Rust bridge facade. The class wraps the
+// `apalabrar-editor-core` wasm exports with a typed object surface;
+// see `core.ts` for the type declarations and dispatcher logic.
+// Types are re-exported here for downstream consumers.
+export {
+  ApalabrarCore,
+  type ApalabrarCoreWasm,
+  type Block,
+  type BlockKind,
+  type BlockTree,
+  type CoreDocId,
+  type EditOp,
+  type Mark,
+  type Position,
+} from './core';
+
 export const VERSION = '0.0.0' as const;
