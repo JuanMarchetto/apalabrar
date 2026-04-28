@@ -322,38 +322,6 @@ fn list_item(indent: u8, text: &str) -> Block {
 }
 
 #[test]
-fn insert_comment_returns_not_yet_implemented() {
-    let mut d = Doc::new();
-    let result = d.apply_edit_op(EditOp::InsertComment {
-        from: 0,
-        to: 1,
-        body: "todo".into(),
-        thread_id: None,
-    });
-    assert_eq!(result, Err(Error::NotYetImplemented("InsertComment")));
-}
-
-#[test]
-fn suggest_returns_not_yet_implemented() {
-    let mut d = Doc::new();
-    let result = d.apply_edit_op(EditOp::Suggest {
-        from: 0,
-        to: 1,
-        replacement: "x".into(),
-    });
-    assert_eq!(result, Err(Error::NotYetImplemented("Suggest")));
-}
-
-#[test]
-fn accept_suggestion_returns_not_yet_implemented() {
-    let mut d = Doc::new();
-    let result = d.apply_edit_op(EditOp::AcceptSuggestion {
-        suggestion_id: "abc".into(),
-    });
-    assert_eq!(result, Err(Error::NotYetImplemented("AcceptSuggestion")));
-}
-
-#[test]
 fn insert_citation_returns_not_yet_implemented() {
     let mut d = Doc::new();
     let result = d.apply_edit_op(EditOp::InsertCitation {
@@ -376,9 +344,10 @@ fn insert_footnote_returns_not_yet_implemented() {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Stub variants must NOT mutate the document text or marks
-// (InsertBlock / SplitBlock / MergeBlocks were promoted to
-// implemented in Phase B and have their own tests below.)
+// Stub variants must NOT mutate the document body text or marks
+// (InsertBlock/SplitBlock/MergeBlocks were promoted in Phase B,
+// InsertComment/Suggest/AcceptSuggestion in Phase C — only the
+// citation + footnote variants remain deferred.)
 // ────────────────────────────────────────────────────────────────
 
 #[test]
@@ -388,20 +357,6 @@ fn deferred_variants_do_not_mutate_the_doc() {
     let prior_text = d.text();
 
     // Fire each STILL-deferred variant; doc should remain bit-identical.
-    let _ = d.apply_edit_op(EditOp::InsertComment {
-        from: 0,
-        to: 1,
-        body: "x".into(),
-        thread_id: None,
-    });
-    let _ = d.apply_edit_op(EditOp::Suggest {
-        from: 0,
-        to: 1,
-        replacement: "y".into(),
-    });
-    let _ = d.apply_edit_op(EditOp::AcceptSuggestion {
-        suggestion_id: "z".into(),
-    });
     let _ = d.apply_edit_op(EditOp::InsertCitation {
         at: 0,
         key: "k".into(),
@@ -477,21 +432,19 @@ proptest! {
 
     /// `apply_edit_op` for any STILL-deferred variant returns the
     /// right `NotYetImplemented(name)` and leaves the doc untouched.
-    /// Phase B promoted InsertBlock/SplitBlock/MergeBlocks to
-    /// implemented, so they're no longer covered here.
+    /// Phase B promoted InsertBlock/SplitBlock/MergeBlocks; Phase C
+    /// promoted InsertComment/Suggest/AcceptSuggestion. Only Phase D
+    /// variants (citations + footnotes) remain deferred.
     #[test]
     fn prop_deferred_variants_preserve_text(
         initial in "[a-zA-Z ]{0,30}",
-        which in 0usize..5,
+        which in 0usize..2,
     ) {
         let mut d = Doc::new();
         d.insert(0, &initial);
         let prior = d.text();
         let (op, name): (EditOp, &'static str) = match which {
-            0 => (EditOp::InsertComment { from: 0, to: 1, body: "c".into(), thread_id: None }, "InsertComment"),
-            1 => (EditOp::Suggest { from: 0, to: 1, replacement: "r".into() }, "Suggest"),
-            2 => (EditOp::AcceptSuggestion { suggestion_id: "id".into() }, "AcceptSuggestion"),
-            3 => (EditOp::InsertCitation { at: 0, key: "k".into() }, "InsertCitation"),
+            0 => (EditOp::InsertCitation { at: 0, key: "k".into() }, "InsertCitation"),
             _ => (EditOp::InsertFootnote { at: 0, body: BlockTree::default() }, "InsertFootnote"),
         };
         let result = d.apply_edit_op(op);
@@ -1142,5 +1095,501 @@ proptest! {
             d.apply_edit_op(EditOp::InsertBlock { at: 0, block: block.clone() }).unwrap();
         }
         prop_assert_eq!(d.block_count(), prior_count + n_inserts);
+    }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase C — InsertComment variant
+// ────────────────────────────────────────────────────────────────
+
+use apalabrar_doc_model::SuggestionState;
+
+#[test]
+fn insert_comment_with_explicit_thread_id_stores_record() {
+    let mut d = Doc::new();
+    d.insert(0, "hello world");
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 5,
+        body: "fix this".into(),
+        thread_id: Some("t-explicit".into()),
+    })
+    .unwrap();
+    let c = d.comment("t-explicit").expect("comment present");
+    assert_eq!(c.thread_id, "t-explicit");
+    assert_eq!(c.from, 0);
+    assert_eq!(c.to, 5);
+    assert_eq!(c.body, "fix this");
+}
+
+#[test]
+fn insert_comment_without_thread_id_generates_one() {
+    let mut d = Doc::new();
+    d.insert(0, "hi");
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 2,
+        body: "review".into(),
+        thread_id: None,
+    })
+    .unwrap();
+    let assigned = d
+        .last_comment_thread_id()
+        .expect("last_comment_thread_id should be set");
+    assert!(!assigned.is_empty());
+    let c = d.comment(&assigned).expect("comment present");
+    assert_eq!(c.body, "review");
+}
+
+#[test]
+fn insert_comment_assigns_strictly_increasing_counter_suffixes() {
+    // Catches a mutation in `next_id` that would flip the counter
+    // direction (n - 1 instead of n + 1). Both directions produce
+    // distinct ids, so a unique-id check isn't enough — we need to
+    // assert the suffix integer ORDERING.
+    let mut d = Doc::new();
+    let mut suffixes: Vec<i64> = Vec::new();
+    for _ in 0..3 {
+        d.apply_edit_op(EditOp::InsertComment {
+            from: 0,
+            to: 0,
+            body: "x".into(),
+            thread_id: None,
+        })
+        .unwrap();
+        let id = d.last_comment_thread_id().unwrap();
+        // Format: "c-{peer_hex}-{counter}". `splitn(3, '-')` picks up
+        // the counter as a single segment even if it has a leading
+        // '-' (negative). A naive `rsplit('-')` would treat the
+        // sign as a separator and lose it, masking the mutation.
+        let parts: Vec<&str> = id.splitn(3, '-').collect();
+        assert_eq!(parts.len(), 3, "id format must be prefix-peer-counter");
+        let suffix: i64 = parts[2]
+            .parse()
+            .expect("counter segment must be a parseable i64");
+        suffixes.push(suffix);
+    }
+    // Strictly increasing — catches the n+1 → n-1 mutation.
+    assert!(
+        suffixes[0] < suffixes[1] && suffixes[1] < suffixes[2],
+        "expected strictly increasing counter suffixes, got {suffixes:?}"
+    );
+}
+
+#[test]
+fn insert_comment_generates_unique_ids_across_calls() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    let mut ids = Vec::new();
+    for _ in 0..5 {
+        d.apply_edit_op(EditOp::InsertComment {
+            from: 0,
+            to: 1,
+            body: "body".into(),
+            thread_id: None,
+        })
+        .unwrap();
+        ids.push(d.last_comment_thread_id().unwrap());
+    }
+    // All five ids must be distinct.
+    let unique: std::collections::HashSet<_> = ids.iter().cloned().collect();
+    assert_eq!(unique.len(), 5);
+}
+
+#[test]
+fn insert_comment_explicit_id_overrides_generated() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 1,
+        body: "body".into(),
+        thread_id: Some("user-supplied".into()),
+    })
+    .unwrap();
+    assert_eq!(d.last_comment_thread_id().as_deref(), Some("user-supplied"));
+}
+
+#[test]
+fn insert_comment_lists_thread_id() {
+    let mut d = Doc::new();
+    d.insert(0, "a");
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 1,
+        body: "body".into(),
+        thread_id: Some("thread-1".into()),
+    })
+    .unwrap();
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 1,
+        body: "second".into(),
+        thread_id: Some("thread-2".into()),
+    })
+    .unwrap();
+    let mut ids = d.comment_thread_ids();
+    ids.sort();
+    assert_eq!(ids, vec!["thread-1".to_string(), "thread-2".to_string()]);
+}
+
+#[test]
+fn insert_comment_empty_doc_lists_no_threads() {
+    let d = Doc::new();
+    assert!(d.comment_thread_ids().is_empty());
+    assert!(d.comment("anything").is_none());
+}
+
+#[test]
+fn insert_comment_preserves_latam_codepoints_in_body() {
+    let mut d = Doc::new();
+    d.insert(0, "año");
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 3,
+        body: "ñoño año mañana".into(),
+        thread_id: Some("ñ".into()),
+    })
+    .unwrap();
+    let c = d.comment("ñ").unwrap();
+    assert_eq!(c.body, "ñoño año mañana");
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase C — Suggest variant
+// ────────────────────────────────────────────────────────────────
+
+#[test]
+fn suggest_creates_pending_record() {
+    let mut d = Doc::new();
+    d.insert(0, "hello world");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 5,
+        replacement: "HOLA".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().expect("id assigned");
+    let s = d.suggestion(&id).expect("suggestion present");
+    assert_eq!(s.id, id);
+    assert_eq!(s.from, 0);
+    assert_eq!(s.to, 5);
+    assert_eq!(s.replacement, "HOLA");
+    assert_eq!(s.state, SuggestionState::Pending);
+    // Doc text is NOT mutated yet — Suggest is a proposal, not an apply.
+    assert_eq!(d.text(), "hello world");
+}
+
+#[test]
+fn suggest_generates_unique_ids_across_calls() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    let mut ids = Vec::new();
+    for _ in 0..5 {
+        d.apply_edit_op(EditOp::Suggest {
+            from: 0,
+            to: 1,
+            replacement: "X".into(),
+        })
+        .unwrap();
+        ids.push(d.last_suggestion_id().unwrap());
+    }
+    let unique: std::collections::HashSet<_> = ids.iter().cloned().collect();
+    assert_eq!(unique.len(), 5);
+}
+
+#[test]
+fn suggest_lists_in_pending_ids() {
+    let mut d = Doc::new();
+    d.insert(0, "abcdef");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 1,
+        replacement: "X".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    assert_eq!(d.pending_suggestion_ids(), vec![id.clone()]);
+    assert_eq!(d.suggestion_ids(), vec![id]);
+}
+
+#[test]
+fn suggest_with_empty_replacement_is_a_proposed_deletion() {
+    let mut d = Doc::new();
+    d.insert(0, "hello world");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 5,
+        to: 11,
+        replacement: "".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    let s = d.suggestion(&id).unwrap();
+    assert_eq!(s.from, 5);
+    assert_eq!(s.to, 11);
+    assert_eq!(s.replacement, "");
+    assert_eq!(s.state, SuggestionState::Pending);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase C — AcceptSuggestion variant
+// ────────────────────────────────────────────────────────────────
+
+#[test]
+fn accept_suggestion_applies_replacement_and_marks_accepted() {
+    let mut d = Doc::new();
+    d.insert(0, "hello world");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 5,
+        replacement: "HOLA".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: id.clone(),
+    })
+    .unwrap();
+    assert_eq!(d.text(), "HOLA world");
+    let s = d.suggestion(&id).unwrap();
+    assert_eq!(s.state, SuggestionState::Accepted);
+    // The accepted suggestion is no longer pending.
+    assert!(!d.pending_suggestion_ids().contains(&id));
+}
+
+#[test]
+fn accept_suggestion_with_empty_replacement_deletes_range() {
+    let mut d = Doc::new();
+    d.insert(0, "hello world");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 5,
+        to: 11,
+        replacement: "".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: id.clone(),
+    })
+    .unwrap();
+    assert_eq!(d.text(), "hello");
+    assert_eq!(d.suggestion(&id).unwrap().state, SuggestionState::Accepted);
+}
+
+#[test]
+fn accept_suggestion_unknown_id_returns_error() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    let result = d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: "nope".into(),
+    });
+    assert_eq!(result, Err(Error::SuggestionNotFound("nope".into())));
+    // Doc text untouched.
+    assert_eq!(d.text(), "abc");
+}
+
+#[test]
+fn accept_suggestion_already_accepted_is_idempotent() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 1,
+        replacement: "X".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: id.clone(),
+    })
+    .unwrap();
+    let text_after_first = d.text();
+    // Second accept must be a no-op (returns Ok, doesn't re-apply).
+    d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: id.clone(),
+    })
+    .unwrap();
+    assert_eq!(d.text(), text_after_first);
+    assert_eq!(d.suggestion(&id).unwrap().state, SuggestionState::Accepted);
+}
+
+#[test]
+fn accept_suggestion_preserves_other_pending() {
+    // Two pending suggestions; accept one. The other stays pending.
+    let mut d = Doc::new();
+    d.insert(0, "AAAA BBBB");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 4,
+        replacement: "XX".into(),
+    })
+    .unwrap();
+    let id1 = d.last_suggestion_id().unwrap();
+    d.apply_edit_op(EditOp::Suggest {
+        from: 5,
+        to: 9,
+        replacement: "YY".into(),
+    })
+    .unwrap();
+    let id2 = d.last_suggestion_id().unwrap();
+    d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: id1.clone(),
+    })
+    .unwrap();
+    // id1 is accepted; id2 is still pending.
+    assert_eq!(d.suggestion(&id1).unwrap().state, SuggestionState::Accepted);
+    assert_eq!(d.suggestion(&id2).unwrap().state, SuggestionState::Pending);
+    assert_eq!(d.pending_suggestion_ids(), vec![id2]);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase C — Snapshot durability
+// ────────────────────────────────────────────────────────────────
+
+#[test]
+fn snapshot_round_trip_preserves_comments() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::InsertComment {
+        from: 0,
+        to: 5,
+        body: "review".into(),
+        thread_id: Some("t1".into()),
+    })
+    .unwrap();
+    let snap = d.snapshot();
+    let restored = Doc::from_snapshot(&snap);
+    let c = restored.comment("t1").expect("comment survives snapshot");
+    assert_eq!(c.from, 0);
+    assert_eq!(c.to, 5);
+    assert_eq!(c.body, "review");
+}
+
+#[test]
+fn snapshot_round_trip_preserves_suggestion_state() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 5,
+        replacement: "HOLA".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    let snap = d.snapshot();
+    let restored = Doc::from_snapshot(&snap);
+    let s = restored.suggestion(&id).expect("suggestion survives");
+    assert_eq!(s.state, SuggestionState::Pending);
+    assert_eq!(s.replacement, "HOLA");
+    // Pending list intact post-snapshot.
+    assert_eq!(restored.pending_suggestion_ids(), vec![id]);
+}
+
+#[test]
+fn snapshot_round_trip_preserves_accepted_suggestion() {
+    let mut d = Doc::new();
+    d.insert(0, "hello world");
+    d.apply_edit_op(EditOp::Suggest {
+        from: 0,
+        to: 5,
+        replacement: "HOLA".into(),
+    })
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    d.apply_edit_op(EditOp::AcceptSuggestion {
+        suggestion_id: id.clone(),
+    })
+    .unwrap();
+    let snap = d.snapshot();
+    let restored = Doc::from_snapshot(&snap);
+    assert_eq!(restored.text(), "HOLA world");
+    assert_eq!(
+        restored.suggestion(&id).unwrap().state,
+        SuggestionState::Accepted
+    );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase C properties
+// ────────────────────────────────────────────────────────────────
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        ..ProptestConfig::default()
+    })]
+
+    /// Each `Suggest` followed by `AcceptSuggestion(its id)` must
+    /// transform the doc text identically to a manual delete+insert
+    /// of `[from, to)` → `replacement`. The cleaner property is text-
+    /// equivalence to the manual splice.
+    #[test]
+    fn prop_accept_equals_manual_splice(
+        prefix in "[a-z]{0,8}",
+        target in "[a-z]{1,8}",
+        suffix in "[a-z]{0,8}",
+        replacement in "[A-Z]{0,8}",
+    ) {
+        let mut suggested = Doc::new();
+        suggested.insert(0, &format!("{prefix}{target}{suffix}"));
+        let from = prefix.chars().count();
+        let to = from + target.chars().count();
+        suggested.apply_edit_op(EditOp::Suggest {
+            from, to, replacement: replacement.clone(),
+        }).unwrap();
+        let id = suggested.last_suggestion_id().unwrap();
+        suggested.apply_edit_op(EditOp::AcceptSuggestion {
+            suggestion_id: id,
+        }).unwrap();
+
+        let mut manual = Doc::new();
+        manual.insert(0, &format!("{prefix}{target}{suffix}"));
+        manual.delete(from..to);
+        manual.insert(from, &replacement);
+
+        prop_assert_eq!(suggested.text(), manual.text());
+    }
+
+    /// `comment_thread_ids().len()` equals the number of distinct
+    /// thread_ids inserted (no duplicates).
+    #[test]
+    fn prop_comment_thread_count_matches_inserts(
+        n in 1usize..6,
+    ) {
+        let mut d = Doc::new();
+        d.insert(0, "abc");
+        for i in 0..n {
+            d.apply_edit_op(EditOp::InsertComment {
+                from: 0, to: 1, body: "b".into(),
+                thread_id: Some(format!("thread-{i}")),
+            }).unwrap();
+        }
+        prop_assert_eq!(d.comment_thread_ids().len(), n);
+    }
+
+    /// `pending_suggestion_ids().len()` decreases by exactly one
+    /// after each `AcceptSuggestion`.
+    #[test]
+    fn prop_accept_decrements_pending_count(
+        n_pending in 2usize..6,
+    ) {
+        let mut d = Doc::new();
+        d.insert(0, &"a".repeat(n_pending * 2));
+        let mut ids = Vec::new();
+        for i in 0..n_pending {
+            d.apply_edit_op(EditOp::Suggest {
+                from: i * 2, to: i * 2 + 1, replacement: "X".into(),
+            }).unwrap();
+            ids.push(d.last_suggestion_id().unwrap());
+        }
+        let mut expected = n_pending;
+        prop_assert_eq!(d.pending_suggestion_ids().len(), expected);
+        for id in &ids {
+            d.apply_edit_op(EditOp::AcceptSuggestion {
+                suggestion_id: id.clone(),
+            }).unwrap();
+            expected -= 1;
+            prop_assert_eq!(d.pending_suggestion_ids().len(), expected);
+        }
     }
 }
