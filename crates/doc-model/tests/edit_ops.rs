@@ -321,56 +321,12 @@ fn list_item(indent: u8, text: &str) -> Block {
     }
 }
 
-#[test]
-fn insert_citation_returns_not_yet_implemented() {
-    let mut d = Doc::new();
-    let result = d.apply_edit_op(EditOp::InsertCitation {
-        at: 0,
-        key: "Smith2020".into(),
-    });
-    assert_eq!(result, Err(Error::NotYetImplemented("InsertCitation")));
-}
-
-#[test]
-fn insert_footnote_returns_not_yet_implemented() {
-    let mut d = Doc::new();
-    let result = d.apply_edit_op(EditOp::InsertFootnote {
-        at: 0,
-        body: BlockTree {
-            blocks: vec![paragraph("note")],
-        },
-    });
-    assert_eq!(result, Err(Error::NotYetImplemented("InsertFootnote")));
-}
-
-// ────────────────────────────────────────────────────────────────
-// Stub variants must NOT mutate the document body text or marks
-// (InsertBlock/SplitBlock/MergeBlocks were promoted in Phase B,
-// InsertComment/Suggest/AcceptSuggestion in Phase C — only the
-// citation + footnote variants remain deferred.)
-// ────────────────────────────────────────────────────────────────
-
-#[test]
-fn deferred_variants_do_not_mutate_the_doc() {
-    let mut d = Doc::new();
-    d.insert(0, "untouched");
-    let prior_text = d.text();
-
-    // Fire each STILL-deferred variant; doc should remain bit-identical.
-    let _ = d.apply_edit_op(EditOp::InsertCitation {
-        at: 0,
-        key: "k".into(),
-    });
-    let _ = d.apply_edit_op(EditOp::InsertFootnote {
-        at: 0,
-        body: BlockTree::default(),
-    });
-
-    assert_eq!(d.text(), prior_text);
-    // No marks should have been applied either.
-    assert!(!d.has_mark(0, Mark::Bold));
-    assert!(!d.has_mark(0, Mark::Italic));
-}
+// All EditOp variants are now implemented (Phases A-D ship complete);
+// the prior `*_returns_not_yet_implemented` and `deferred_variants_*`
+// pins are gone. The `Error::NotYetImplemented` variant remains in
+// the public surface for forward-compat (any future EditOp variant
+// added to the enum has a place to land while its handler is being
+// written), but no current variant produces it.
 
 // ────────────────────────────────────────────────────────────────
 // Property: InsertText then its inverse DeleteRange returns to prior
@@ -430,27 +386,8 @@ proptest! {
         prop_assert_eq!(d.text(), prior);
     }
 
-    /// `apply_edit_op` for any STILL-deferred variant returns the
-    /// right `NotYetImplemented(name)` and leaves the doc untouched.
-    /// Phase B promoted InsertBlock/SplitBlock/MergeBlocks; Phase C
-    /// promoted InsertComment/Suggest/AcceptSuggestion. Only Phase D
-    /// variants (citations + footnotes) remain deferred.
-    #[test]
-    fn prop_deferred_variants_preserve_text(
-        initial in "[a-zA-Z ]{0,30}",
-        which in 0usize..2,
-    ) {
-        let mut d = Doc::new();
-        d.insert(0, &initial);
-        let prior = d.text();
-        let (op, name): (EditOp, &'static str) = match which {
-            0 => (EditOp::InsertCitation { at: 0, key: "k".into() }, "InsertCitation"),
-            _ => (EditOp::InsertFootnote { at: 0, body: BlockTree::default() }, "InsertFootnote"),
-        };
-        let result = d.apply_edit_op(op);
-        prop_assert_eq!(result, Err(Error::NotYetImplemented(name)));
-        prop_assert_eq!(d.text(), prior);
-    }
+    // Note: `prop_deferred_variants_preserve_text` retired in Phase D
+    // — every EditOp variant now has a real handler.
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -1591,5 +1528,479 @@ proptest! {
             expected -= 1;
             prop_assert_eq!(d.pending_suggestion_ids().len(), expected);
         }
+    }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase D — InsertCitation variant
+// ────────────────────────────────────────────────────────────────
+
+const CITATION_MARKER: char = '\u{E000}';
+const FOOTNOTE_MARKER: char = '\u{E001}';
+
+#[test]
+fn insert_citation_inserts_marker_codepoint_at_position() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 5,
+        key: "Smith2020".into(),
+    })
+    .unwrap();
+    // Body now ends with the marker codepoint.
+    let body = d.text();
+    let chars: Vec<char> = body.chars().collect();
+    assert_eq!(chars.len(), 6);
+    assert_eq!(chars[5], CITATION_MARKER);
+    assert_eq!(&body[..5], "hello");
+}
+
+#[test]
+fn insert_citation_records_key_and_position() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 5,
+        key: "Smith2020".into(),
+    })
+    .unwrap();
+    let id = d.last_citation_id().expect("id assigned");
+    let c = d.citation(&id).expect("citation present");
+    assert_eq!(c.id, id);
+    assert_eq!(c.at, 5);
+    assert_eq!(c.key, "Smith2020");
+}
+
+#[test]
+fn insert_citation_at_zero_prepends_marker() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 0,
+        key: "K".into(),
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    assert_eq!(chars[0], CITATION_MARKER);
+    assert_eq!(chars[1..].iter().collect::<String>(), "hello");
+}
+
+#[test]
+fn insert_citation_clips_out_of_bounds_to_end() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 999,
+        key: "K".into(),
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    assert_eq!(chars.len(), 4);
+    assert_eq!(chars[3], CITATION_MARKER);
+    let id = d.last_citation_id().unwrap();
+    let c = d.citation(&id).unwrap();
+    // Stored position is the CLIPPED `at`, not the raw 999.
+    assert_eq!(c.at, 3);
+}
+
+#[test]
+fn insert_citation_unique_ids_across_calls() {
+    let mut d = Doc::new();
+    d.insert(0, "abcdef");
+    let mut ids = Vec::new();
+    for _ in 0..5 {
+        d.apply_edit_op(EditOp::InsertCitation {
+            at: 0,
+            key: "k".into(),
+        })
+        .unwrap();
+        ids.push(d.last_citation_id().unwrap());
+    }
+    let unique: std::collections::HashSet<_> = ids.iter().cloned().collect();
+    assert_eq!(unique.len(), 5);
+}
+
+#[test]
+fn insert_citation_strictly_increasing_counter() {
+    // Mutation-killer: catches the n+1 → n-1 mutation in next_id when
+    // applied to the citation counter (a different counter key from
+    // comment / suggestion).
+    let mut d = Doc::new();
+    let mut suffixes: Vec<i64> = Vec::new();
+    for _ in 0..3 {
+        d.apply_edit_op(EditOp::InsertCitation {
+            at: 0,
+            key: "k".into(),
+        })
+        .unwrap();
+        let id = d.last_citation_id().unwrap();
+        let parts: Vec<&str> = id.splitn(3, '-').collect();
+        suffixes.push(parts[2].parse().unwrap());
+    }
+    assert!(suffixes[0] < suffixes[1] && suffixes[1] < suffixes[2]);
+}
+
+#[test]
+fn insert_citation_preserves_existing_text() {
+    let mut d = Doc::new();
+    d.insert(0, "alpha beta");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 5,
+        key: "K".into(),
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    // Marker between "alpha" and " beta".
+    assert_eq!(&chars[..5].iter().collect::<String>(), "alpha");
+    assert_eq!(chars[5], CITATION_MARKER);
+    assert_eq!(&chars[6..].iter().collect::<String>(), " beta");
+}
+
+#[test]
+fn insert_citation_lists_in_citation_ids() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 0,
+        key: "k1".into(),
+    })
+    .unwrap();
+    let id1 = d.last_citation_id().unwrap();
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 0,
+        key: "k2".into(),
+    })
+    .unwrap();
+    let id2 = d.last_citation_id().unwrap();
+    let mut ids = d.citation_ids();
+    ids.sort();
+    let mut expected = vec![id1, id2];
+    expected.sort();
+    assert_eq!(ids, expected);
+}
+
+#[test]
+fn citation_unknown_id_returns_none() {
+    let d = Doc::new();
+    assert!(d.citation("nope").is_none());
+    assert!(d.citation_ids().is_empty());
+}
+
+#[test]
+fn insert_citation_preserves_latam_keys() {
+    let mut d = Doc::new();
+    d.insert(0, "año");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 3,
+        key: "Año2026".into(),
+    })
+    .unwrap();
+    let id = d.last_citation_id().unwrap();
+    let c = d.citation(&id).unwrap();
+    assert_eq!(c.key, "Año2026");
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase D — InsertFootnote variant
+// ────────────────────────────────────────────────────────────────
+
+#[test]
+fn insert_footnote_inserts_marker_at_position() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 5,
+        body: BlockTree {
+            blocks: vec![paragraph("note body")],
+        },
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    assert_eq!(chars[5], FOOTNOTE_MARKER);
+    // The body text and footnote body live in DIFFERENT containers;
+    // the body only carries the marker.
+    assert_eq!(chars.len(), 6);
+}
+
+#[test]
+fn insert_footnote_records_block_tree() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    let body = BlockTree {
+        blocks: vec![
+            paragraph("first para"),
+            heading(2, "subhead"),
+            paragraph("second para"),
+        ],
+    };
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 5,
+        body: body.clone(),
+    })
+    .unwrap();
+    let id = d.last_footnote_id().unwrap();
+    let f = d.footnote(&id).expect("footnote present");
+    assert_eq!(f.id, id);
+    assert_eq!(f.at, 5);
+    assert_eq!(f.body, body);
+}
+
+#[test]
+fn insert_footnote_with_listitem_block_round_trips() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    let body = BlockTree {
+        blocks: vec![list_item(2, "deeply nested item")],
+    };
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 0,
+        body: body.clone(),
+    })
+    .unwrap();
+    let id = d.last_footnote_id().unwrap();
+    let f = d.footnote(&id).unwrap();
+    assert_eq!(f.body, body);
+    assert_eq!(f.body.blocks[0].kind, BlockKind::ListItem { indent: 2 });
+}
+
+#[test]
+fn insert_footnote_with_empty_block_tree_is_valid() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 1,
+        body: BlockTree::default(),
+    })
+    .unwrap();
+    let id = d.last_footnote_id().unwrap();
+    let f = d.footnote(&id).unwrap();
+    assert_eq!(f.body, BlockTree::default());
+    assert_eq!(f.body.blocks.len(), 0);
+}
+
+#[test]
+fn insert_footnote_at_end_appends_marker() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 3,
+        body: BlockTree {
+            blocks: vec![paragraph("note")],
+        },
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    assert_eq!(chars.len(), 4);
+    assert_eq!(chars[3], FOOTNOTE_MARKER);
+}
+
+#[test]
+fn insert_footnote_clips_out_of_bounds() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 999,
+        body: BlockTree::default(),
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    assert_eq!(chars.len(), 4);
+    assert_eq!(chars[3], FOOTNOTE_MARKER);
+    let id = d.last_footnote_id().unwrap();
+    assert_eq!(d.footnote(&id).unwrap().at, 3);
+}
+
+#[test]
+fn insert_footnote_unique_ids() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    let mut ids = Vec::new();
+    for _ in 0..4 {
+        d.apply_edit_op(EditOp::InsertFootnote {
+            at: 0,
+            body: BlockTree::default(),
+        })
+        .unwrap();
+        ids.push(d.last_footnote_id().unwrap());
+    }
+    let unique: std::collections::HashSet<_> = ids.iter().cloned().collect();
+    assert_eq!(unique.len(), 4);
+}
+
+#[test]
+fn insert_footnote_strictly_increasing_counter() {
+    let mut d = Doc::new();
+    let mut suffixes: Vec<i64> = Vec::new();
+    for _ in 0..3 {
+        d.apply_edit_op(EditOp::InsertFootnote {
+            at: 0,
+            body: BlockTree::default(),
+        })
+        .unwrap();
+        let id = d.last_footnote_id().unwrap();
+        let parts: Vec<&str> = id.splitn(3, '-').collect();
+        suffixes.push(parts[2].parse().unwrap());
+    }
+    assert!(suffixes[0] < suffixes[1] && suffixes[1] < suffixes[2]);
+}
+
+#[test]
+fn footnote_unknown_id_returns_none() {
+    let d = Doc::new();
+    assert!(d.footnote("nope").is_none());
+    assert!(d.footnote_ids().is_empty());
+}
+
+#[test]
+fn insert_footnote_preserves_latam_text_in_blocks() {
+    let mut d = Doc::new();
+    d.insert(0, "abc");
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 0,
+        body: BlockTree {
+            blocks: vec![paragraph("ñoño año mañana día sí")],
+        },
+    })
+    .unwrap();
+    let id = d.last_footnote_id().unwrap();
+    let f = d.footnote(&id).unwrap();
+    assert_eq!(f.body.blocks[0].text, "ñoño año mañana día sí");
+}
+
+#[test]
+fn citation_and_footnote_markers_distinct_in_body() {
+    // The two markers are different codepoints so the layout engine
+    // can tell them apart by reading the body alone.
+    let mut d = Doc::new();
+    d.insert(0, "AB");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 1,
+        key: "K".into(),
+    })
+    .unwrap();
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 0,
+        body: BlockTree::default(),
+    })
+    .unwrap();
+    let chars: Vec<char> = d.text().chars().collect();
+    // Footnote was inserted at 0, then citation was at 1 of original, but
+    // the citation insertion came FIRST so its position 1 was relative
+    // to "AB"; after footnote prepends, citation marker shifts to index 2.
+    //
+    // Concretely: Step 1 inserts citation at pos 1 → "A<E000>B".
+    // Step 2 inserts footnote at pos 0 → "<E001>A<E000>B".
+    assert_eq!(chars.len(), 4);
+    assert_eq!(chars[0], FOOTNOTE_MARKER);
+    assert_eq!(chars[1], 'A');
+    assert_eq!(chars[2], CITATION_MARKER);
+    assert_eq!(chars[3], 'B');
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase D — Snapshot durability
+// ────────────────────────────────────────────────────────────────
+
+#[test]
+fn snapshot_round_trip_preserves_citations() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    d.apply_edit_op(EditOp::InsertCitation {
+        at: 5,
+        key: "Smith2020".into(),
+    })
+    .unwrap();
+    let id = d.last_citation_id().unwrap();
+    let snap = d.snapshot();
+    let restored = Doc::from_snapshot(&snap);
+    let c = restored.citation(&id).expect("survives");
+    assert_eq!(c.at, 5);
+    assert_eq!(c.key, "Smith2020");
+    // Marker codepoint is also preserved in the body.
+    let chars: Vec<char> = restored.text().chars().collect();
+    assert_eq!(chars[5], CITATION_MARKER);
+}
+
+#[test]
+fn snapshot_round_trip_preserves_footnotes_with_block_tree() {
+    let mut d = Doc::new();
+    d.insert(0, "hello");
+    let body = BlockTree {
+        blocks: vec![
+            heading(1, "Title"),
+            paragraph("body para"),
+            list_item(0, "list entry"),
+        ],
+    };
+    d.apply_edit_op(EditOp::InsertFootnote {
+        at: 5,
+        body: body.clone(),
+    })
+    .unwrap();
+    let id = d.last_footnote_id().unwrap();
+    let snap = d.snapshot();
+    let restored = Doc::from_snapshot(&snap);
+    let f = restored.footnote(&id).unwrap();
+    assert_eq!(f.body, body);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase D properties
+// ────────────────────────────────────────────────────────────────
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        cases: 256,
+        ..ProptestConfig::default()
+    })]
+
+    /// `citation_ids().len()` after N InsertCitation calls is exactly N.
+    #[test]
+    fn prop_citation_count_matches_inserts(n in 1usize..6) {
+        let mut d = Doc::new();
+        d.insert(0, "abc");
+        for i in 0..n {
+            d.apply_edit_op(EditOp::InsertCitation {
+                at: 0, key: format!("k{i}"),
+            }).unwrap();
+        }
+        prop_assert_eq!(d.citation_ids().len(), n);
+    }
+
+    /// Same for footnotes.
+    #[test]
+    fn prop_footnote_count_matches_inserts(n in 1usize..6) {
+        let mut d = Doc::new();
+        d.insert(0, "abc");
+        for _ in 0..n {
+            d.apply_edit_op(EditOp::InsertFootnote {
+                at: 0, body: BlockTree::default(),
+            }).unwrap();
+        }
+        prop_assert_eq!(d.footnote_ids().len(), n);
+    }
+
+    /// Inserting a footnote with arbitrary block content and reading
+    /// it back yields the same `BlockTree` (modulo heading-level
+    /// clamp, which is the expected encoding behavior).
+    #[test]
+    fn prop_footnote_body_round_trips(
+        text1 in "[a-zñáé ]{0,20}",
+        text2 in "[a-zñáé ]{0,20}",
+        level in 1u8..=6,
+    ) {
+        let mut d = Doc::new();
+        let body = BlockTree {
+            blocks: vec![
+                heading(level, &text1),
+                paragraph(&text2),
+            ],
+        };
+        d.apply_edit_op(EditOp::InsertFootnote {
+            at: 0, body: body.clone(),
+        }).unwrap();
+        let id = d.last_footnote_id().unwrap();
+        let f = d.footnote(&id).unwrap();
+        prop_assert_eq!(f.body, body);
     }
 }
