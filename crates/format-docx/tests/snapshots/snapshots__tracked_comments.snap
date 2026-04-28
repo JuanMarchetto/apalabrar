@@ -1,0 +1,8 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TRACKED_COMMENTS)
+---
+paragraph_count: 2
+paragraphs:
+  - The hypothesis predicts a linear relationship between the two variables.
+  - Subsequent analysis confirmed the prediction.

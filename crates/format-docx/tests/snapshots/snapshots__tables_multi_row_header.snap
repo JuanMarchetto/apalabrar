@@ -1,0 +1,38 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TABLES_MULTI_ROW_HEADER)
+---
+paragraph_count: 32
+paragraphs:
+  - Demographic comparison
+  - Cohort
+  - N
+  - Mean age
+  - Female %
+  - Urban %
+  - "2018"
+  - "412"
+  - "21.4"
+  - "54.1"
+  - "72.3"
+  - "2019"
+  - "438"
+  - "21.7"
+  - "52.8"
+  - "74.5"
+  - "2020"
+  - "391"
+  - "22.1"
+  - "55.6"
+  - "71.8"
+  - "2021"
+  - "456"
+  - "21.9"
+  - "53.4"
+  - "76.1"
+  - "2022"
+  - "478"
+  - "22.0"
+  - "54.0"
+  - "77.4"
+  - Sample sizes vary by year due to enrollment fluctuations.

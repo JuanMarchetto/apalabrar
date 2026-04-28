@@ -1,0 +1,9 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(MULTILINGUAL_PORTUGUESE)
+---
+paragraph_count: 3
+paragraphs:
+  - "Resumo: Esta dissertação aborda os impactos da educação à distância em populações vulneráveis no Brasil. A investigação é conduzida em três universidades públicas do Sudeste, com ênfase nas regiões periféricas de São Paulo e Rio de Janeiro. Palavras-chave: educação, equidade, ações afirmativas, ensino superior."
+  - ""
+  - "Introdução: O cenário brasileiro pós-pandêmico revelou desigualdades estruturais no acesso à internet, à eletricidade estável e a dispositivos adequados — fatores que mediam diretamente a continuidade dos estudos."

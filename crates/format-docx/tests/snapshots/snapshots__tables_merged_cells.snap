@@ -1,0 +1,31 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TABLES_MERGED_CELLS)
+---
+paragraph_count: 25
+paragraphs:
+  - Quarterly results
+  - Region
+  - Q1
+  - Q2
+  - ""
+  - Revenue
+  - Costs
+  - Revenue
+  - Costs
+  - North
+  - "120"
+  - "80"
+  - "140"
+  - "85"
+  - South
+  - "95"
+  - "70"
+  - "110"
+  - "72"
+  - East
+  - "140"
+  - "90"
+  - "155"
+  - "95"
+  - ""

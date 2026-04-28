@@ -1,0 +1,7 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TRACKED_INSERTION)
+---
+paragraph_count: 1
+paragraphs:
+  - "The original draft argued that strictly speaking, the methodology was sound."

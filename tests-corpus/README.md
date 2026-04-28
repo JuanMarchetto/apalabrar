@@ -12,6 +12,39 @@ This directory holds `.docx` files used as golden inputs for round-trip fidelity
 - `tracked/` — Track-changes + comments
 - `legacy/` — `.doc` (Word 97-2003) for compatibility tests
 
+## Phase 2.6 expansion (25 fixtures)
+
+| Category        | Fixture                          | Source format | Notes                                         |
+| --------------- | -------------------------------- | ------------- | --------------------------------------------- |
+| `academic/`     | `simple-paragraph.docx`          | HTML          | Validation Gate 4 starter                     |
+| `academic/`     | `heading-hierarchy.docx`         | HTML          | Validation Gate 4 starter                     |
+| `academic/`     | `numbered-list.docx`             | HTML `<ol>`   | Numbered list inside Methodology section      |
+| `academic/`     | `blockquote.docx`                | HTML          | Block-level quotation                         |
+| `academic/`     | `mixed-emphasis.docx`            | HTML          | `<em>`, `<strong>`, nested emphasis runs      |
+| `multilingual/` | `spanish-tildes.docx`            | plain text    | Validation Gate 4 starter (LATAM coverage)    |
+| `multilingual/` | `portuguese.docx`                | plain text    | pt-BR with cedilla, tildes, accents           |
+| `multilingual/` | `french-german.docx`             | plain text    | French diacritics + German umlauts + ß        |
+| `multilingual/` | `mixed-script.docx`              | plain text    | Greek + Spanish + Polish + Czech in one doc   |
+| `tables/`       | `simple-table.docx`              | HTML          | Validation Gate 4 starter (3×3)               |
+| `tables/`       | `merged-cells.docx`              | HTML          | rowspan + colspan in header                   |
+| `tables/`       | `multi-row-header.docx`          | HTML          | 5 rows × 5 cols of demographic data           |
+| `tables/`       | `numeric-data.docx`              | HTML          | Numeric stats table (no surrounding prose)    |
+| `footnotes/`    | `single-footnote.docx`           | FODT          | Validation Gate 4 starter                     |
+| `footnotes/`    | `multiple-footnotes.docx`        | FODT          | 3 footnotes anchored across one paragraph     |
+| `footnotes/`    | `footnote-with-formatting.docx`  | FODT          | Italic emphasis inside footnote body          |
+| `footnotes/`    | `cross-paragraph-footnotes.docx` | FODT          | Footnotes anchored across multiple paragraphs |
+| `equations/`    | `inline-formulae.docx`           | plain text    | Unicode math symbols in body text             |
+| `equations/`    | `greek-symbols.docx`             | plain text    | Greek alphabet + physics constants            |
+| `equations/`    | `display-math.docx`              | HTML          | Centred display equation with sub/superscript |
+| `equations/`    | `mixed-text.docx`                | HTML          | Equations interleaved with prose              |
+| `tracked/`      | `insertion.docx`                 | FODT          | `<text:insertion>` revision                   |
+| `tracked/`      | `deletion.docx`                  | FODT          | `<text:deletion>` revision (full paragraph)   |
+| `tracked/`      | `comments.docx`                  | FODT          | `<office:annotation>` x 2                     |
+| `tracked/`      | `mixed-revisions.docx`           | FODT          | Insertion + comment in the same paragraph     |
+
+(`synthetic/empty-self-closing-paragraph.docx` is an edge-case fixture covered by the synthetic
+suite; not counted in the 25.)
+
 ## Goals
 
 - v0 milestone: 100 docs total, ≥95% byte-equivalent round-trip

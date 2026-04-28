@@ -1,0 +1,13 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(ACADEMIC_NUMBERED_LIST)
+---
+paragraph_count: 7
+paragraphs:
+  - Methodology
+  - "The following procedures were applied in sequence:"
+  - "Sample collection from sites A through D. "
+  - "Centrifugation at 4000 rpm for 15 minutes. "
+  - "Spectrophotometric analysis at 280 nm. "
+  - "Statistical comparison via paired t-test. "
+  - All measurements were repeated three times.

@@ -27,6 +27,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.6 — test corpus expansion to 25 fixtures across
+  six categories. The 5-fixture Validation Gate 4 starter set is
+  joined by 20 LibreOffice-generated docs covering: 3 academic
+  variations (numbered list, block quote, mixed emphasis), 3
+  multilingual additions (pt-BR, French+German+Italian, mixed
+  Greek/Latin/Slavic scripts), 3 table variations (rowspan+colspan
+  merge, multi-row demographic header, numeric-only stats), 3
+  footnote variations (multiple footnotes per paragraph, formatted
+  footnote body, cross-paragraph anchors), 4 equation fixtures
+  (Unicode math inline, Greek symbols + physics constants, display
+  math with sub/superscripts, equations interleaved with prose),
+  and 4 tracked-change fixtures (insertion, deletion of a whole
+  paragraph, two comments, mixed insertion + comment). All 20 new
+  fixtures round-trip byte-equivalent through the format-docx
+  shadow-store after whitespace + attribute-order normalization,
+  bringing the round-trip test count from 16 to 36 (plus the 1
+  synthetic edge case). 20 new insta snapshots capture the
+  paragraph-text projection of each fixture; manually inspected
+  before `cargo insta accept`. The expanded corpus is the
+  foundation for the v0 milestone target of 100 docs / ≥95%
+  byte-equivalent round-trip.
 - Phase 2 prompt 2.5 — frictionless UX page-load flow: ships the
   Section D timeline as the new `/` route. `index.html` inlines a
   critical CSS skeleton so the blank-doc surface paints at T+0
