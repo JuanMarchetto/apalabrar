@@ -1,0 +1,246 @@
+---
+source: crates/layout/tests/snapshots.rs
+expression: summarize(&result)
+---
+page_count: 2
+blocks:
+  - page_index: 0
+    block_index: 0
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 1
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 2
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 3
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 4
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 5
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 6
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 7
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 8
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 9
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 10
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 11
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 12
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 13
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 14
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 15
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 16
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 17
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 18
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 19
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 20
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 21
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 22
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 23
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 24
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 25
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 26
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 27
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 28
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 29
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 30
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 31
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 32
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 33
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 34
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 35
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 36
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 37
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 38
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
+  - page_index: 1
+    block_index: 39
+    kind: Paragraph
+    line_count: 1
+    height_px_round: 26
+    origin_x_px_round: 0
