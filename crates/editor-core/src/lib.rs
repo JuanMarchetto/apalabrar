@@ -8,6 +8,7 @@ use std::sync::{Mutex, OnceLock};
 use thiserror::Error;
 
 pub mod bridge;
+pub mod dispatch;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
