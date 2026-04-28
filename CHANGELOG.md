@@ -28,6 +28,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.2 — doc-model edit-op surface (Phase A — text ops):
+  `apalabrar-doc-model` now exposes `EditOp` (the cross-boundary edit
+  verb) with all 11 variants from `blueprint-part3-synthesis.md`
+  Section G declared up-front (`InsertText`, `DeleteRange`,
+  `FormatRange`, `InsertBlock`, `SplitBlock`, `MergeBlocks`,
+  `InsertComment`, `Suggest`, `AcceptSuggestion`, `InsertCitation`,
+  `InsertFootnote`), plus the supporting value types `Block`,
+  `BlockKind`, `BlockTree`, the `Position` alias, and a
+  `#[non_exhaustive] Error` enum (currently `NotYetImplemented(name:
+  &'static str)`). `Doc::apply_edit_op(&mut self, op: EditOp) ->
+  Result<(), Error>` is the dispatcher. Phase A implements the three
+  text-level variants by routing to the existing `insert/delete/
+  format` Loro path; the remaining eight return
+  `Err(Error::NotYetImplemented("VariantName"))` so the bridge
+  contract is final from day one and the JS bridge can feature-flag
+  variants by inspecting which return that error. 36 new tests pass
+  GREEN in `tests/edit_ops.rs` (1 lib + 20 api carry-over + 31
+  edit-op tests + 5 CRDT properties; 31 of the 36 are new): 8 happy
+  paths for the implemented variants (including LATAM multibyte +
+  multi-mark), 13 edge cases (insert-at-end, past-end clip, empty
+  text, empty marks, inverted range, empty range, full delete),
+  8 NotYetImplemented assertions with the variant-name string
+  pinned, 1 deferred-variants-leave-doc-untouched probe, and 3
+  `proptest` properties (insert↔delete inverse round-trip over 256
+  cases, empty-text idempotence, deferred-variant preservation
+  across all 8 deferred variants). cargo-mutants kills 29/29 = **100%**
+  on the doc-model crate (target ≥ 95% per moat-layer rule).
+  cargo-llvm-cov reports 99.52 % region / 100 % function / 99.15 %
+  line on `doc-model/src/lib.rs`; the single uncovered line is a
+  pre-existing defensive `else { continue; }` arm in `has_mark`
+  that is dead per Loro's `to_delta` contract (documented as
+  intentional in the Gate 3 memory). The Phase A-introduced code
+  (`apply_edit_op` + `EditOp` dispatcher + value types) is at 100 %
+  line coverage. Phase B (block model — variants 4-6), Phase C
+  (comments + suggestions — variants 7-9), and Phase D (citations
+  + footnotes — variants 10-11) remain deferred; the resumption
+  plan lives in the project memory.
 - Phase 2 prompt 2.1 — Storage layer (OPFS + IndexedDB + WAL): the
   `@apalabrar/editor-bridge` package now ships a `StorageBackend`
   contract with two implementations. `MemoryStorage` is the
