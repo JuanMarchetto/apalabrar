@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
-- Phase 2 prompt 2.7 — `format-docx` read path under TDD discipline. Adds
+- Phase 3 prompt 3.1 — `format-docx` read path under TDD discipline. Adds
   `pub fn read_preserve(bytes) -> Result<(DocModel, ShadowXml), Error>`
   alongside the existing `read`. `ShadowXml` is a verbatim snapshot of every
   zip part (recognized or not) captured at read time, so callers always have
