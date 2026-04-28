@@ -28,6 +28,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.1 — Storage layer (OPFS + IndexedDB + WAL): the
+  `@apalabrar/editor-bridge` package now ships a `StorageBackend`
+  contract with two implementations. `MemoryStorage` is the
+  in-memory reference (defensive-copies blobs on save and load) and
+  doubles as the model for the property suite. `OpfsStorage` is the
+  durable production backend — blobs in OPFS under
+  `blobs/<docId>.bin`, metadata in IndexedDB
+  (`apalabrar-storage/metadata`), a WAL on OPFS under
+  `wal/<txnId>.json`. The save flow records intent → writes the
+  blob (commit on `FileSystemWritableFileStream.close()`) → updates
+  the IDB row → drops the WAL record. On construction OpfsStorage
+  scans the WAL and reconciles every residual record through the
+  pure `decideRecovery` state machine (rollback / commit /
+  apply-delete / cleanup). Surface: `parseDocId`, `isDocId`,
+  `StorageError` (kinds `invalid-id` | `quota-exceeded` |
+  `corruption` | `backend-unavailable`), `MemoryStorage`,
+  `OpfsStorage.create()`. 59 unit tests pass GREEN
+  (storage.test.ts 14 + wal.test.ts 12 + storage-memory.test.ts 26
+  + storage-properties.test.ts 6 + index.test.ts 1) at 100 % line /
+  100 % function / 98.82 % branch coverage on the Node-tested
+  surface (storage-opfs.ts is browser-only and excluded). 7
+  Playwright tests in `tests-e2e/tests/storage.spec.ts` exercise
+  OpfsStorage in real Chromium: save→close→reopen→load,
+  list/delete, subscribe, invalid-id rejection, crash recovery for
+  partial blob (rollback) and complete blob (commit), and the
+  Demo page Save/Load/Delete flow. The `/demo` route now exposes
+  Save/Load/Delete buttons wired to OpfsStorage with a saved-docs
+  panel; the `/storage-harness` route is a Playwright-only
+  testing harness that exposes the storage instance on
+  `window.__opfs`.
 - Validation Gate 5 — Rust-only stage (keystroke-to-render p95 GO/NO-GO,
   Path B perf): `apalabrar-layout` ships a paged layout engine
   (`Engine::{new, layout, relayout_after_change}`) over a flat `Document`
