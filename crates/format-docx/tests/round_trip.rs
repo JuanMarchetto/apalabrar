@@ -27,6 +27,8 @@ const SPANISH_TILDES: &[u8] =
 const SIMPLE_TABLE: &[u8] = include_bytes!("../../../tests-corpus/tables/simple-table.docx");
 const SINGLE_FOOTNOTE: &[u8] =
     include_bytes!("../../../tests-corpus/footnotes/single-footnote.docx");
+const EMPTY_SELF_CLOSING: &[u8] =
+    include_bytes!("../../../tests-corpus/synthetic/empty-self-closing-paragraph.docx");
 
 fn assert_unmodified_roundtrip(label: &str, fixture: &[u8]) {
     let model = read(fixture).expect("read");
@@ -232,4 +234,43 @@ fn set_paragraph_text_with_quotes_round_trips() {
         reloaded.paragraph_text(0),
         Some(r#"double "quotes" and 'apostrophes'"#),
     );
+}
+
+// ---------- Self-closing <w:p/> handling ----------
+//
+// The 5 corpus fixtures all come from LibreOffice, which always emits
+// explicit `<w:p>...</w:p>` even for empty paragraphs. The OOXML schema
+// nevertheless permits self-closing `<w:p/>`, and `index_paragraphs` has
+// a dedicated Event::Empty arm to handle it. Without a fixture that
+// exercises the arm, deleting it goes unnoticed by mutation testing.
+//
+// `tests-corpus/synthetic/empty-self-closing-paragraph.docx` is built
+// from `simple-paragraph.docx` with a `<w:p/>` spliced in right before
+// `</w:body>` — see `/tmp/make_self_closing.py` (kept out-of-tree; the
+// fixture itself is the canonical artifact).
+
+#[test]
+fn read_indexes_self_closing_empty_paragraph() {
+    let model = read(EMPTY_SELF_CLOSING).expect("read");
+    assert_eq!(
+        model.paragraph_count(),
+        2,
+        "synthetic fixture must surface BOTH paragraphs (the original \
+         BodyText one + the self-closing empty one)",
+    );
+    let original_text = model.paragraph_text(0).expect("p[0] text");
+    assert!(
+        original_text.starts_with("This is a single paragraph fixture"),
+        "p[0] should be the original BodyText paragraph; got {original_text:?}",
+    );
+    assert_eq!(
+        model.paragraph_text(1),
+        Some(""),
+        "p[1] should be the empty self-closing paragraph",
+    );
+}
+
+#[test]
+fn roundtrip_self_closing_empty_paragraph_is_byte_equivalent() {
+    assert_unmodified_roundtrip("empty-self-closing", EMPTY_SELF_CLOSING);
 }
