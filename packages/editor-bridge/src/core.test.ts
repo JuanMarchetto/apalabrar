@@ -5,15 +5,10 @@
 // value handling. End-to-end tests against the real wasm pkg run in
 // a separate `core.e2e.test.ts` once `pnpm wasm:build` is wired in CI.
 
-import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { describe, expect, it } from 'vitest';
 
-import {
-  ApalabrarCore,
-  type ApalabrarCoreWasm,
-  type Block,
-  type EditOp,
-} from './core';
+import { ApalabrarCore, type ApalabrarCoreWasm, type Block, type EditOp } from './core';
 
 interface CallLog {
   fn: string;
@@ -299,10 +294,13 @@ describe('ApalabrarCore', () => {
       const wasm = new WasmMock();
       const core = new ApalabrarCore(wasm);
       const id = core.createDoc();
-      wasm.blockJsonByIdx.set(0, JSON.stringify({
-        kind: { type: 'Heading', level: 2 },
-        text: 'title',
-      }));
+      wasm.blockJsonByIdx.set(
+        0,
+        JSON.stringify({
+          kind: { type: 'Heading', level: 2 },
+          text: 'title',
+        }),
+      );
       const block = core.blockAt(id, 0);
       const expected: Block = {
         kind: { type: 'Heading', level: 2 },
