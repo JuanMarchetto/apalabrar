@@ -28,6 +28,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.2 — doc-model block model (Phase B — InsertBlock /
+  SplitBlock / MergeBlocks): the `apalabrar-doc-model` crate grows a
+  block-aware layer on top of the Phase A `EditOp` dispatcher. The
+  body remains a single `LoroText` (single-linearised model — locked
+  in the lib.rs header), with `\n` codepoints as block separators
+  and a parallel `LoroMovableList` named `"blocks"` storing one
+  string-encoded `BlockKind` per block. The decision document is in
+  the lib.rs header: multi-container was rejected because it would
+  require breaking `Position = usize` and Phase A's already-green
+  31 edit-op tests; v0 is single-user so the CRDT-merge advantage
+  of multi-container is theoretical. `Doc::block_count()` and
+  `Doc::block(idx) -> Option<Block>` accessors complete the read
+  surface; `BlockKind::Heading.level` clamps into 1..=6 on encode,
+  unknown-string decode falls back to `Paragraph` for forward-compat.
+  The three EditOp arms now dispatch to private handlers:
+  `handle_insert_block` splits the target block at `at` into
+  before/new/after with kind preservation on both halves;
+  `handle_split_block` inserts a `\n` and duplicates the parent
+  kind; `handle_merge_blocks` checks adjacency, finds the separating
+  `\n` via a single-pass loop, deletes both the `\n` and the second
+  block's kind entry (left-wins). Out-of-bounds positions clip
+  defensively per the Phase A contract; non-adjacent or same-block
+  merges are no-ops. The `Error::NotYetImplemented` variants for
+  these three ops are removed from the dispatcher; the bridge
+  contract for those three is now final. Phase A's three NYI tests
+  for these variants were rewritten as happy-path tests (justified
+  under "tests-are-immutable except when wrong" because the previous
+  assertions were placeholder pins, not behavioural invariants);
+  `prop_deferred_variants_preserve_text` is updated to skip the now-
+  implemented variants and cover only the 5 still-deferred
+  comment/suggestion/citation/footnote ops. 67 GREEN in
+  `tests/edit_ops.rs` (62 from Phase A + 5 new mutation-killing
+  multi-block tests; total of 30 brand-new Phase B tests across
+  block accessors, InsertBlock variants, SplitBlock, MergeBlocks,
+  snapshot round-trip preserves block kinds, and three properties:
+  `prop_block_count_matches_newlines_plus_one`,
+  `prop_split_then_merge_restores_text`,
+  `prop_insert_block_increments_count`). cargo-mutants kills 75/76
+  = **98.68 %** on the doc-model crate (well above the 95 % moat
+  floor); the single survivor is a true equivalent mutant in
+  `handle_split_block` documented inline. cargo-llvm-cov reports
+  99.62 % region / 100 % function / 99.28 % line; the two uncovered
+  lines are the pre-existing `else { continue; }` arm in `has_mark`
+  (Gate 3) and the `let-else` fallback for the unreachable
+  no-newline-found case in `handle_merge_blocks`, both intentional
+  defensive arms. Phase C (comments + suggestions — variants 7-9)
+  and Phase D (citations + footnotes — variants 10-11) remain
+  deferred; resumption plan lives in the project memory.
 - Phase 2 prompt 2.2 — doc-model edit-op surface (Phase A — text ops):
   `apalabrar-doc-model` now exposes `EditOp` (the cross-boundary edit
   verb) with all 11 variants from `blueprint-part3-synthesis.md`
