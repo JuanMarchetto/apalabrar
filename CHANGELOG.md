@@ -28,6 +28,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.2 — doc-model citations + footnotes (Phase D —
+  InsertCitation / InsertFootnote): the doc-model crate completes
+  the EditOp surface. **All 11 blueprint variants now have real
+  handlers** — no `Err(Error::NotYetImplemented(..))` path remains
+  in `apply_edit_op`. The `NotYetImplemented` variant stays in the
+  public Error surface for forward-compat (any future EditOp
+  addition has a place to land while its handler is being written),
+  but no current variant produces it. Citations and footnotes
+  represent themselves as private-use-area marker codepoints
+  embedded in the body text — `\u{E000}` for citations, `\u{E001}`
+  for footnotes. Distinct codepoints (vs one shared marker) means
+  the layout engine and OOXML serialiser can dispatch on the
+  codepoint alone without a parallel-map lookup. Records live in
+  `citations` (sub-LoroMap with `at` + `key`) and `footnotes`
+  (sub-LoroMap with `at` + `blocks`) root maps; ID generation
+  reuses the Phase C peer-id-prefixed-counter machinery with two
+  new meta keys. Footnote bodies serialise as a `LoroValue::List`
+  of `LoroValue::Map<{kind, text}>` — flat, not recursive
+  (Phase A's `BlockTree` shape is preserved); the recursive case
+  ships when layout / OOXML round-trip needs it. Public API gains
+  `Citation` and `Footnote` types plus 6 accessors
+  (`citation_ids`, `citation`, `last_citation_id`, `footnote_ids`,
+  `footnote`, `last_footnote_id`). Anchor caveat unchanged from
+  Phase C: positions are RAW codepoints. Phase A's two
+  `*_returns_not_yet_implemented` tests for these variants were
+  rewritten as happy-path; the `prop_deferred_variants_preserve_text`
+  property and `deferred_variants_do_not_mutate_the_doc` sweep
+  have RETIRED — they have no still-deferred variants to cover.
+  109 GREEN edit-op tests + 3 lib unit tests + 20 api carry-over
+  + 5 CRDT properties = 137 in the doc-model crate (Phase C was
+  115). cargo-mutants kills 150/151 = **99.34 %** on the moat layer
+  with ZERO new survivors from Phase D code; the lone outstanding
+  survivor is the equivalent mutant in `handle_split_block`
+  carried over from Phase B and already documented inline.
+  cargo-llvm-cov reports 97.03 % region / 95 % function / 97.22 %
+  line; the 13 uncovered lines are all forward-compat defensive
+  arms — `has_mark` per-Loro-contract, malformed-entry fall-throughs
+  in `read_*_field` / `read_block_tree_field` helpers, the per-block
+  default in `read_block_tree_field`, comment / citation / footnote
+  accessor `_ => return None` shape-mismatch arms, and the
+  `let-else` no-newline-found fallback in `handle_merge_blocks`.
+  doc-model edit-op surface ships fully complete with this commit.
 - Phase 2 prompt 2.2 — doc-model comments + suggestions (Phase C —
   InsertComment / Suggest / AcceptSuggestion): the
   `apalabrar-doc-model` crate gains comment-thread and
