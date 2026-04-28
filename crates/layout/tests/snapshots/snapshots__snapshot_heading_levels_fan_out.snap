@@ -1,0 +1,42 @@
+---
+source: crates/layout/tests/snapshots.rs
+expression: summarize(&result)
+---
+page_count: 1
+blocks:
+  - page_index: 0
+    block_index: 0
+    kind: Heading-1
+    line_count: 1
+    height_px_round: 58
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 1
+    kind: Heading-2
+    line_count: 1
+    height_px_round: 50
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 2
+    kind: Heading-3
+    line_count: 1
+    height_px_round: 42
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 3
+    kind: Heading-4
+    line_count: 1
+    height_px_round: 42
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 4
+    kind: Heading-5
+    line_count: 1
+    height_px_round: 42
+    origin_x_px_round: 0
+  - page_index: 0
+    block_index: 5
+    kind: Heading-6
+    line_count: 1
+    height_px_round: 42
+    origin_x_px_round: 0

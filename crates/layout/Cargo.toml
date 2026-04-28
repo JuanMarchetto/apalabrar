@@ -17,8 +17,18 @@ thiserror.workspace = true
 criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
+serde = { workspace = true, features = ["derive"] }
 
 [[bench]]
 name = "layout_bench"
+harness = false
+required-features = []
+
+# `keystroke_p95` is a non-Criterion bench: it is a binary that prints
+# p50/p95/p99 of `relayout_after_change` over 1 000 individual calls and
+# exits non-zero if p95 exceeds the gate budget. Run with
+# `cargo bench -p apalabrar-layout --bench keystroke_p95`.
+[[bench]]
+name = "keystroke_p95"
 harness = false
 required-features = []

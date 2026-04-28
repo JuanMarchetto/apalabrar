@@ -218,6 +218,7 @@ dependencies = [
  "insta",
  "proptest",
  "rustybuzz 0.20.1",
+ "serde",
  "thiserror 1.0.69",
 ]
 
