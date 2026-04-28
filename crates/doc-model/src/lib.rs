@@ -4,8 +4,8 @@
 use std::ops::Range;
 
 use loro::{
-    Container, ExportMode, LoroDoc, LoroMap, LoroMovableList, LoroText, LoroValue, TextDelta,
-    ValueOrContainer,
+    Container, ExportMode, LoroDoc, LoroListValue, LoroMap, LoroMapValue, LoroMovableList,
+    LoroText, LoroValue, TextDelta, ValueOrContainer,
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -30,18 +30,22 @@ const TEXT_CONTAINER_ID: &str = "doc";
 /// the invariant maintained by every block-level op.
 const BLOCKS_CONTAINER_ID: &str = "blocks";
 
-/// Stable container IDs for Phase C. `comments` and `suggestions`
-/// are root `LoroMap`s keyed by thread / suggestion id; each value
-/// is a sub-`LoroMap` storing the record's fields. `meta` holds
-/// monotonically-increasing counters used by the ID generator so
-/// generated IDs survive snapshot round-trips.
+/// Stable container IDs for Phase C/D. Comments / suggestions /
+/// citations / footnotes are root `LoroMap`s keyed by id; each
+/// value is a sub-`LoroMap` storing the record's fields. `meta`
+/// holds monotonically-increasing counters used by the ID
+/// generator so generated IDs survive snapshot round-trips.
 const COMMENTS_CONTAINER_ID: &str = "comments";
 const SUGGESTIONS_CONTAINER_ID: &str = "suggestions";
+const CITATIONS_CONTAINER_ID: &str = "citations";
+const FOOTNOTES_CONTAINER_ID: &str = "footnotes";
 const META_CONTAINER_ID: &str = "meta";
 
 /// Meta keys used for ID generation counters.
 const META_KEY_NEXT_COMMENT: &str = "next_comment_id";
 const META_KEY_NEXT_SUGGESTION: &str = "next_suggestion_id";
+const META_KEY_NEXT_CITATION: &str = "next_citation_id";
+const META_KEY_NEXT_FOOTNOTE: &str = "next_footnote_id";
 
 /// Sub-map field keys (kept private but defined as constants so
 /// `mutants` can't silently rename one without breaking tests).
@@ -50,11 +54,25 @@ const FIELD_TO: &str = "to";
 const FIELD_BODY: &str = "body";
 const FIELD_REPLACEMENT: &str = "replacement";
 const FIELD_STATE: &str = "state";
+const FIELD_AT: &str = "at";
+const FIELD_KEY: &str = "key";
+const FIELD_BLOCKS: &str = "blocks";
+const FIELD_KIND: &str = "kind";
+const FIELD_TEXT: &str = "text";
 
 /// Suggestion-state string codes (single source of truth).
 const STATE_PENDING: &str = "pending";
 const STATE_ACCEPTED: &str = "accepted";
 const STATE_REJECTED: &str = "rejected";
+
+/// Phase D marker codepoints. Both live in the Unicode private-use
+/// area so they cannot collide with anything a user might type or
+/// paste from external sources. Using DISTINCT codepoints (one per
+/// marker kind) means the layout engine and OOXML serialiser can
+/// dispatch on the codepoint alone, without consulting the parallel
+/// citation / footnote maps.
+const CITATION_MARKER: char = '\u{E000}';
+const FOOTNOTE_MARKER: char = '\u{E001}';
 
 // ─────────────────────────────────────────────────────────────────
 // Block model: single-linearised (locked 2026-04-28, Phase B).
@@ -145,6 +163,12 @@ pub struct Doc {
     /// `apply_edit_op(Suggest)` on this Doc instance. Same lifetime
     /// rules as `last_comment_thread_id`.
     last_suggestion_id: Option<String>,
+    /// Transient: id assigned by the most recent
+    /// `apply_edit_op(InsertCitation)` (Phase D).
+    last_citation_id: Option<String>,
+    /// Transient: id assigned by the most recent
+    /// `apply_edit_op(InsertFootnote)` (Phase D).
+    last_footnote_id: Option<String>,
 }
 
 impl Doc {
@@ -154,6 +178,8 @@ impl Doc {
             inner: LoroDoc::new(),
             last_comment_thread_id: None,
             last_suggestion_id: None,
+            last_citation_id: None,
+            last_footnote_id: None,
         }
     }
 
@@ -232,6 +258,8 @@ impl Doc {
             inner,
             last_comment_thread_id: None,
             last_suggestion_id: None,
+            last_citation_id: None,
+            last_footnote_id: None,
         }
     }
 
@@ -522,6 +550,132 @@ impl Doc {
     pub fn last_suggestion_id(&self) -> Option<String> {
         self.last_suggestion_id.clone()
     }
+
+    fn citations_map(&self) -> LoroMap {
+        self.inner.get_map(CITATIONS_CONTAINER_ID)
+    }
+
+    fn footnotes_map(&self) -> LoroMap {
+        self.inner.get_map(FOOTNOTES_CONTAINER_ID)
+    }
+
+    /// Sorted IDs of every citation in the doc (Phase D).
+    pub fn citation_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.citations_map().keys().map(|k| k.to_string()).collect();
+        ids.sort();
+        ids
+    }
+
+    /// Citation by id, or `None` if absent / malformed (Phase D).
+    pub fn citation(&self, id: &str) -> Option<Citation> {
+        let entry = match self.citations_map().get(id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return None,
+        };
+        let at = read_i64_field(&entry, FIELD_AT)? as usize;
+        let key = read_string_field(&entry, FIELD_KEY)?;
+        Some(Citation {
+            id: id.to_string(),
+            at,
+            key,
+        })
+    }
+
+    /// The id assigned by the most recent `InsertCitation` applied
+    /// to this `Doc` instance (Phase D, transient).
+    pub fn last_citation_id(&self) -> Option<String> {
+        self.last_citation_id.clone()
+    }
+
+    /// Sorted IDs of every footnote in the doc (Phase D).
+    pub fn footnote_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.footnotes_map().keys().map(|k| k.to_string()).collect();
+        ids.sort();
+        ids
+    }
+
+    /// Footnote by id, or `None` if absent / malformed (Phase D).
+    pub fn footnote(&self, id: &str) -> Option<Footnote> {
+        let entry = match self.footnotes_map().get(id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return None,
+        };
+        let at = read_i64_field(&entry, FIELD_AT)? as usize;
+        let blocks = read_block_tree_field(&entry, FIELD_BLOCKS)?;
+        Some(Footnote {
+            id: id.to_string(),
+            at,
+            body: BlockTree { blocks },
+        })
+    }
+
+    /// The id assigned by the most recent `InsertFootnote` applied
+    /// to this `Doc` instance (Phase D, transient).
+    pub fn last_footnote_id(&self) -> Option<String> {
+        self.last_footnote_id.clone()
+    }
+}
+
+/// Decode a `BlockTree` from a sub-map field. The on-disk shape is
+/// `LoroValue::List<LoroValue::Map<{kind: String, text: String}>>`.
+/// Malformed entries decode to `Paragraph` with empty text — same
+/// forward-compat policy as `str_to_kind`.
+fn read_block_tree_field(entry: &LoroMap, key: &str) -> Option<Vec<Block>> {
+    let LoroValue::List(list) = entry.get(key).and_then(|v| match v {
+        ValueOrContainer::Value(v) => Some(v),
+        _ => None,
+    })?
+    else {
+        return None;
+    };
+    let blocks: Vec<Block> = list
+        .iter()
+        .map(|v| {
+            let LoroValue::Map(m) = v else {
+                return Block {
+                    kind: BlockKind::Paragraph,
+                    text: String::new(),
+                };
+            };
+            let kind = m
+                .get(FIELD_KIND)
+                .and_then(|v| match v {
+                    LoroValue::String(s) => Some(str_to_kind(s.as_ref())),
+                    _ => None,
+                })
+                .unwrap_or(BlockKind::Paragraph);
+            let text = m
+                .get(FIELD_TEXT)
+                .and_then(|v| match v {
+                    LoroValue::String(s) => Some(s.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            Block { kind, text }
+        })
+        .collect();
+    Some(blocks)
+}
+
+/// Encode a `BlockTree` as a `LoroValue` for storage in a sub-map
+/// `blocks` field. Inverse of `read_block_tree_field`.
+fn block_tree_to_value(blocks: &[Block]) -> LoroValue {
+    let entries: Vec<LoroValue> = blocks
+        .iter()
+        .map(|b| {
+            LoroValue::Map(LoroMapValue::from(vec![
+                (
+                    FIELD_KIND.to_string(),
+                    LoroValue::String(kind_to_str(&b.kind).into()),
+                ),
+                (
+                    FIELD_TEXT.to_string(),
+                    LoroValue::String(b.text.clone().into()),
+                ),
+            ]))
+        })
+        .collect();
+    LoroValue::List(LoroListValue::from(entries))
 }
 
 /// Read an `I64` field from a sub-map, returning `None` for absent /
@@ -670,6 +824,30 @@ pub struct Suggestion {
     pub state: SuggestionState,
 }
 
+/// Snapshot of a citation record (Phase D). The citation is
+/// represented in the body as a single `\u{E000}` marker codepoint;
+/// `at` is the codepoint position of that marker. `key` is the CSL
+/// citation key (eg. "Smith2020"). Position anchors are RAW codepoints
+/// — same staleness caveat as `Comment` and `Suggestion`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Citation {
+    pub id: String,
+    pub at: Position,
+    pub key: String,
+}
+
+/// Snapshot of a footnote record (Phase D). The body carries a
+/// `\u{E001}` marker codepoint at `at`. `body` is a flat `BlockTree`
+/// of the footnote contents. v0 keeps the tree flat (no nested
+/// footnotes); the recursive case ships when layout / OOXML round-
+/// trip requires it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Footnote {
+    pub id: String,
+    pub at: Position,
+    pub body: BlockTree,
+}
+
 /// Cross-boundary edit verb. Variants 1-3 (`InsertText`,
 /// `DeleteRange`, `FormatRange`) are implemented; the remaining
 /// eight return `Error::NotYetImplemented`.
@@ -790,8 +968,8 @@ impl Doc {
             EditOp::AcceptSuggestion { suggestion_id } => {
                 self.handle_accept_suggestion(suggestion_id)
             }
-            EditOp::InsertCitation { .. } => Err(Error::NotYetImplemented("InsertCitation")),
-            EditOp::InsertFootnote { .. } => Err(Error::NotYetImplemented("InsertFootnote")),
+            EditOp::InsertCitation { at, key } => self.handle_insert_citation(at, key),
+            EditOp::InsertFootnote { at, body } => self.handle_insert_footnote(at, body),
         }
     }
 
@@ -1012,6 +1190,58 @@ impl Doc {
         entry
             .insert(FIELD_STATE, state_to_str(SuggestionState::Accepted))
             .expect("loro map insert should not fail");
+        Ok(())
+    }
+
+    /// Insert a citation marker `\u{E000}` at codepoint position
+    /// `at` and record `(at, key)` under a generated id. The `at`
+    /// stored in the record is the CLIPPED position (matches the
+    /// marker's actual location after `min(len)`), not the raw
+    /// input. Subsequent body edits do not update this stored
+    /// position — the same anchor caveat as Phase C.
+    fn handle_insert_citation(&mut self, at: Position, key: String) -> Result<(), Error> {
+        let id = self.next_id("cit", META_KEY_NEXT_CITATION);
+        let body = self.body();
+        let len = body.len_unicode();
+        let at = at.min(len);
+        body.insert(at, &CITATION_MARKER.to_string())
+            .expect("loro insert should not fail");
+        let entry = self
+            .citations_map()
+            .get_or_create_container(&id, LoroMap::new())
+            .expect("loro get_or_create_container should not fail");
+        entry
+            .insert(FIELD_AT, LoroValue::I64(at as i64))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_KEY, key)
+            .expect("loro map insert should not fail");
+        self.last_citation_id = Some(id);
+        Ok(())
+    }
+
+    /// Insert a footnote marker `\u{E001}` at codepoint position
+    /// `at` and record `(at, body)` under a generated id. Same anchor
+    /// caveat as `handle_insert_citation`.
+    fn handle_insert_footnote(&mut self, at: Position, body: BlockTree) -> Result<(), Error> {
+        let id = self.next_id("fn", META_KEY_NEXT_FOOTNOTE);
+        let body_text = self.body();
+        let len = body_text.len_unicode();
+        let at = at.min(len);
+        body_text
+            .insert(at, &FOOTNOTE_MARKER.to_string())
+            .expect("loro insert should not fail");
+        let entry = self
+            .footnotes_map()
+            .get_or_create_container(&id, LoroMap::new())
+            .expect("loro get_or_create_container should not fail");
+        entry
+            .insert(FIELD_AT, LoroValue::I64(at as i64))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_BLOCKS, block_tree_to_value(&body.blocks))
+            .expect("loro map insert should not fail");
+        self.last_footnote_id = Some(id);
         Ok(())
     }
 }
