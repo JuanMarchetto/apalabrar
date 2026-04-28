@@ -1,0 +1,19 @@
+---
+source: crates/format-docx/tests/read_preserve.rs
+expression: shadow_summary(FOOTNOTES_MULTIPLE)
+---
+part_names:
+  - "[Content_Types].xml"
+  - _rels/.rels
+  - docProps/app.xml
+  - docProps/core.xml
+  - word/_rels/document.xml.rels
+  - word/document.xml
+  - word/fontTable.xml
+  - word/footnotes.xml
+  - word/settings.xml
+  - word/styles.xml
+  - word/theme/theme1.xml
+part_count: 11
+document_xml_len: 2222
+indexed_paragraph_count: 2

@@ -1,0 +1,18 @@
+---
+source: crates/format-docx/tests/read_preserve.rs
+expression: shadow_summary(SPANISH_TILDES)
+---
+part_names:
+  - "[Content_Types].xml"
+  - _rels/.rels
+  - docProps/app.xml
+  - docProps/core.xml
+  - word/_rels/document.xml.rels
+  - word/document.xml
+  - word/fontTable.xml
+  - word/settings.xml
+  - word/styles.xml
+  - word/theme/theme1.xml
+part_count: 10
+document_xml_len: 2742
+indexed_paragraph_count: 7

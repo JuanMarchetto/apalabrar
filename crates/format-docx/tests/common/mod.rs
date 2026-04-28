@@ -1,3 +1,5 @@
+#![allow(dead_code)] // helpers are shared across multiple test binaries; not every binary uses every helper
+
 //! Shared test helpers for the OOXML round-trip test suite.
 //!
 //! Two pillars:

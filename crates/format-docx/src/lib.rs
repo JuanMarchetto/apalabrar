@@ -147,6 +147,65 @@ impl DocModel {
 /// input, malformed zips, missing `word/document.xml`, or malformed XML
 /// inside the main document part.
 pub fn read(bytes: &[u8]) -> Result<DocModel, Error> {
+    let (model, _shadow) = read_preserve(bytes)?;
+    Ok(model)
+}
+
+// ---------------------------------------------------------------------------
+// Shadow-preserve surface
+// ---------------------------------------------------------------------------
+//
+// `read_preserve` reads a `.docx` into a `DocModel` AND a `ShadowXml`
+// snapshot of every zip part. The structural surface only interprets
+// `word/document.xml` for paragraph-level edits; every other part is
+// unrecognized and survives byte-for-byte through the shadow.
+
+/// Verbatim shadow of every zip part in the original `.docx`, captured
+/// at read time. Holding a `ShadowXml` alongside a (possibly mutated)
+/// `DocModel` is the lossless escape hatch: callers always have access
+/// to the pristine original bytes.
+pub struct ShadowXml {
+    parts: BTreeMap<String, Vec<u8>>,
+}
+
+impl ShadowXml {
+    /// Archive names of every zip part captured at read time, in
+    /// `BTreeMap` order (lexicographic by name).
+    pub fn part_names(&self) -> Vec<&str> {
+        self.parts.keys().map(String::as_str).collect()
+    }
+
+    /// Verbatim bytes of a single zip part by archive name. `None` if
+    /// the original `.docx` did not contain a part with that name.
+    pub fn part(&self, name: &str) -> Option<&[u8]> {
+        self.parts.get(name).map(Vec::as_slice)
+    }
+
+    /// Verbatim bytes of `word/document.xml`. Always present after a
+    /// successful `read_preserve`.
+    pub fn document_xml(&self) -> &[u8] {
+        self.parts
+            .get(DOCUMENT_PART)
+            .map(Vec::as_slice)
+            .expect("read_preserve guarantees word/document.xml")
+    }
+
+    /// Total number of zip parts captured. A successful `read_preserve`
+    /// always produces a non-empty shadow (we error out earlier if
+    /// `word/document.xml` is missing), so the conventional
+    /// `is_empty()` companion would be a fallback for an impossible
+    /// state and a permanent mutation-survivor.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.parts.len()
+    }
+}
+
+/// Parse `.docx` bytes into a structural `DocModel` AND a verbatim
+/// `ShadowXml` snapshot of the input. Errors on empty input, malformed
+/// zips, missing `word/document.xml`, or malformed XML inside the main
+/// document part — same error variants as `read`.
+pub fn read_preserve(bytes: &[u8]) -> Result<(DocModel, ShadowXml), Error> {
     if bytes.is_empty() {
         return Err(Error::EmptyInput);
     }
@@ -169,14 +228,18 @@ pub fn read(bytes: &[u8]) -> Result<DocModel, Error> {
         .cloned()
         .ok_or_else(|| Error::InvalidOoxml(format!("missing {DOCUMENT_PART}")))?;
     let paragraphs = index_paragraphs(&raw)?;
-    Ok(DocModel {
+    let shadow = ShadowXml {
+        parts: parts.clone(),
+    };
+    let model = DocModel {
         parts,
         document: DocumentTree {
             raw,
             paragraphs,
             dirty: false,
         },
-    })
+    };
+    Ok((model, shadow))
 }
 
 /// Serialize a `DocModel` back to `.docx` bytes. Unmodified parts are
