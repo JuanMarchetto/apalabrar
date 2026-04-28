@@ -27,6 +27,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Validation Gate 5 — Rust-only stage (keystroke-to-render p95 GO/NO-GO,
+  Path B perf): `apalabrar-layout` ships a paged layout engine
+  (`Engine::{new, layout, relayout_after_change}`) over a flat `Document`
+  / `Block` model (Paragraph, Heading{level}, ListItem{indent}). The
+  engine bundles DejaVu Sans regular (744 KB, DejaVu license, embedded
+  via `include_bytes!`) so shaping is reproducible across machines, and
+  drives shaping + line-breaking through `cosmic-text 0.12`'s
+  `Buffer::set_text → shape_until_scroll → layout_runs` pipeline. The
+  cache is a `BTreeMap<usize, ShapedBlock>` keyed by block index;
+  `relayout_after_change` re-shapes only the changed block before
+  re-packing pages. Length mismatches transparently fall back to a full
+  layout. 37 tests across the crate pass GREEN: 2 lib (version pin +
+  bundled-font sanity), 26 behavioural in `tests/api.rs` (construction,
+  viewport math, empty doc, single block, pagination, kind round-trips,
+  heading-vs-paragraph height, indent → origin_x and wrap-width math,
+  LATAM accents, determinism, cache invariants, in-place relayout ≡
+  fresh layout, OOB index, length-change fallback, line-sum bound, long
+  paragraph wrap), 6 property tests in `tests/properties.rs` (block-box
+  count == doc.len, layout determinism, every block_index exactly once,
+  no block taller than a page, OOB always errors, in-place relayout
+  matches fresh), and 3 insta YAML snapshots reviewed manually before
+  `cargo insta accept`. The new `keystroke_p95` bench measures 1 000
+  individual `relayout_after_change` calls at the document midpoint on
+  a 10 000-block synthetic corpus (mixed paragraph/heading/list) and
+  reports p50 = 2.09 ms, p95 = **3.79 ms**, p99 = 4.89 ms, max = 7.42 ms
+  — **4.2× under the 16 ms gate budget**. The Criterion `layout_bench`
+  reports cold full-layout 1.24-1.59-1.92 s and a sample-mean
+  incremental band of 1.85-2.00 ms over 50 batched samples.
+  cargo-mutants kills 59/61 (96.7 %) — well past the 85 % floor for
+  non-moat crates; the two surviving mutations are float-arithmetic
+  perturbations on the page-overflow check (`>` vs `>=` and the sign of
+  `f32::EPSILON`) that are inherently equivalent on non-edge inputs.
+  `cargo llvm-cov` reports 97.42 % region / 100 % function / 94.30 %
+  line on `apalabrar-layout/src/lib.rs`. The Playwright keystroke-to-
+  render bench (CPU-throttled, full editor wired through CRDT + paint)
+  is deferred to a follow-up gate after the editor is wired into the
+  WASM bridge — this stage validates only the layout half of the
+  keystroke chain. Phase 1 closure remains pending the Playwright run.
 - Validation Gate 4 (OOXML round-trip moat GO/NO-GO): structural surface
   in `apalabrar_format_docx` (`read(&[u8]) -> Result<DocModel, Error>`,
   `write(&DocModel) -> Result<Vec<u8>, Error>`, plus `paragraph_count`,
