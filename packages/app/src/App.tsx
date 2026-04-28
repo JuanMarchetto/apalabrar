@@ -2,6 +2,7 @@ import type { Component } from 'solid-js';
 import { Match, Switch } from 'solid-js';
 import { ComposingEditor } from './components/ComposingEditor';
 import { Demo } from './pages/Demo';
+import { StorageHarness } from './pages/StorageHarness';
 
 const route = () => typeof window === 'undefined' ? '/' : window.location.pathname;
 
@@ -30,6 +31,9 @@ export const App: Component = () => {
         </Match>
         <Match when={route() === '/demo'}>
           <Demo />
+        </Match>
+        <Match when={route() === '/storage-harness'}>
+          <StorageHarness />
         </Match>
       </Switch>
     </main>

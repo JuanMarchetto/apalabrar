@@ -29,4 +29,21 @@ export {
 // `index.html` response).
 export { default as wasmUrl } from 'apalabrar-editor-core/apalabrar_editor_core_bg.wasm?url';
 
+// Storage layer (Phase 2 prompt 2.1). See storage.ts for the contract,
+// storage-memory.ts for the in-memory reference, and storage-opfs.ts
+// for the production backend (OPFS + IndexedDB + WAL).
+export {
+  type ChangeListener,
+  type DocId,
+  type DocMetadata,
+  isDocId,
+  parseDocId,
+  type StorageBackend,
+  StorageError,
+  type StorageErrorKind,
+  type Unsubscribe,
+} from './storage';
+export { MemoryStorage } from './storage-memory';
+export { OpfsStorage } from './storage-opfs';
+
 export const VERSION = '0.0.0' as const;
