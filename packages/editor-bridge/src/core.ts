@@ -32,9 +32,9 @@ export type Position = number;
 export type Mark = 'Bold' | 'Italic';
 
 export type BlockKind =
-  | { type: 'Paragraph' }
-  | { type: 'Heading'; level: number }
-  | { type: 'ListItem'; indent: number };
+  | { type: 'Paragraph'; }
+  | { type: 'Heading'; level: number; }
+  | { type: 'ListItem'; indent: number; };
 
 export interface Block {
   kind: BlockKind;
@@ -46,28 +46,28 @@ export interface BlockTree {
 }
 
 export type EditOp =
-  | { kind: 'InsertText'; at: Position; text: string; marks: Mark[] }
-  | { kind: 'DeleteRange'; from: Position; to: Position }
-  | { kind: 'FormatRange'; from: Position; to: Position; mark: Mark }
-  | { kind: 'InsertBlock'; at: Position; block: Block }
-  | { kind: 'SplitBlock'; at: Position }
-  | { kind: 'MergeBlocks'; first: Position; second: Position }
+  | { kind: 'InsertText'; at: Position; text: string; marks: Mark[]; }
+  | { kind: 'DeleteRange'; from: Position; to: Position; }
+  | { kind: 'FormatRange'; from: Position; to: Position; mark: Mark; }
+  | { kind: 'InsertBlock'; at: Position; block: Block; }
+  | { kind: 'SplitBlock'; at: Position; }
+  | { kind: 'MergeBlocks'; first: Position; second: Position; }
   | {
-      kind: 'InsertComment';
-      from: Position;
-      to: Position;
-      body: string;
-      thread_id: string | null;
-    }
-  | { kind: 'Suggest'; from: Position; to: Position; replacement: string }
-  | { kind: 'AcceptSuggestion'; suggestion_id: string }
-  | { kind: 'InsertCitation'; at: Position; key: string }
-  | { kind: 'InsertFootnote'; at: Position; body: BlockTree };
+    kind: 'InsertComment';
+    from: Position;
+    to: Position;
+    body: string;
+    thread_id: string | null;
+  }
+  | { kind: 'Suggest'; from: Position; to: Position; replacement: string; }
+  | { kind: 'AcceptSuggestion'; suggestion_id: string; }
+  | { kind: 'InsertCitation'; at: Position; key: string; }
+  | { kind: 'InsertFootnote'; at: Position; body: BlockTree; };
 
 /// Branded handle returned by `createDoc` / `restoreFromSnapshot`.
 /// Wraps a `bigint` (the wasm-bindgen u64 representation) so
 /// callers can't accidentally swap a doc id for any other bigint.
-export type CoreDocId = bigint & { readonly __brand: 'CoreDocId' };
+export type CoreDocId = bigint & { readonly __brand: 'CoreDocId'; };
 
 // ─────────────────────────────────────────────────────────────────
 // Wasm module interface — the exports `apalabrar-editor-core` will
