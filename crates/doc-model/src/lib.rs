@@ -3,23 +3,78 @@
 
 use std::ops::Range;
 
-use loro::{ExportMode, LoroDoc, LoroText, LoroValue, TextDelta};
+use loro::{
+    ExportMode, LoroDoc, LoroMovableList, LoroText, LoroValue, TextDelta, ValueOrContainer,
+};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Stable position handle. Phase A is text-only and represents
-/// positions as Unicode codepoint offsets so the surface stays
-/// compatible with the existing `insert/delete/format` API. Phase B
-/// (block model) will replace this alias with an opaque struct that
-/// survives concurrent edits across blocks; that change is
-/// non-breaking for callers that already speak codepoint offsets
-/// because the new type will have a `From<usize>` constructor.
+/// Stable position handle. A flat Unicode codepoint offset into the
+/// linearised body text (see "Block model: single-linearised" below).
+/// Kept as a `usize` alias rather than an opaque struct: Phase A's
+/// `EditOp::InsertBlock { at: Position, .. }` signature is already
+/// public, so promoting `Position` to a struct would break that
+/// surface. Block-aware cursors (if needed for v1 collab UX) will
+/// land as a *separate* opaque handle type alongside `Position`,
+/// not as a replacement.
 pub type Position = usize;
 
 /// Stable container ID for the document body. A LoroDoc holds many
 /// containers keyed by string id; we reserve "doc" for the rich-text body
 /// so snapshots are interchangeable across instances.
 const TEXT_CONTAINER_ID: &str = "doc";
+
+/// Stable container ID for the parallel block-kind list (Phase B).
+/// One entry per block; `len(blocks) == count('\n' in body) + 1` is
+/// the invariant maintained by every block-level op.
+const BLOCKS_CONTAINER_ID: &str = "blocks";
+
+// ─────────────────────────────────────────────────────────────────
+// Block model: single-linearised (locked 2026-04-28, Phase B).
+// ─────────────────────────────────────────────────────────────────
+//
+// The doc body is a SINGLE `LoroText`. Block boundaries are `\n`
+// codepoints inside that text. Block kinds (paragraph / heading /
+// list-item) live in a parallel `LoroMovableList<String>` named
+// "blocks" with one entry per block — i.e. always one more entry
+// than the number of `\n` chars in the body.
+//
+// Why single-linearised over multi-container (one `LoroText` per
+// block under a `LoroMovableList`):
+//
+//   1. `EditOp::InsertBlock { at: Position, .. }` and friends were
+//      locked in Phase A with `Position = usize` (a flat codepoint
+//      offset). Multi-container would force `Position` to become an
+//      opaque `(BlockId, offset)` struct, which breaks the public
+//      surface and the 31 already-green Phase A edit-op tests.
+//      Tests are immutable except when wrong, and Phase A's tests
+//      are not wrong.
+//
+//   2. v0 is single-user. The CRDT-merge advantage of multi-container
+//      (block-level causality on concurrent edits across the same
+//      paragraph boundary) is theoretical at v0; we have no syncing
+//      peers yet. When v1 collab arrives we revisit — likely as a
+//      stable-cursor LAYER over the linear text, not a re-architect.
+//
+//   3. Single-linearised has a smaller mutation-test surface and
+//      keeps the existing `insert / delete / format` paths unchanged.
+//      Cold/incremental layout already projects from `body.text()`
+//      so the layout engine needs no changes either.
+//
+// Trade-off accepted: concurrent edits at a block boundary on
+// peers A and B will land deterministically per Loro's text CRDT,
+// but the *block identity* of the inserted text depends on which
+// side of the `\n` it lands on. For collab-heavy v1 features
+// (per-block comments, scroll-to-block) we will introduce a
+// derived "block id" type backed by Loro text cursors at the
+// boundary positions; that addition is non-breaking.
+//
+// Block-kind encoding in the `LoroMovableList`:
+//   - `BlockKind::Paragraph`             → "paragraph"
+//   - `BlockKind::Heading { level }`     → "heading:{level}" (level ∈ 1..=6)
+//   - `BlockKind::ListItem { indent }`   → "list-item:{indent}"
+// Out-of-range levels clamp on insert. Unknown strings decode to
+// `Paragraph` defensively (forward-compat for future kinds).
 
 /// Inline character formatting marks. Apalabrar v0 ships Bold + Italic;
 /// later phases will extend this enum with Underline / Strike / Code.
@@ -163,6 +218,128 @@ impl Doc {
             cursor += chars;
         }
         false
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Block model (Phase B): single-linearised body + parallel kind list
+// ─────────────────────────────────────────────────────────────────
+
+impl Doc {
+    /// Get the parallel block-kinds list. The list is allowed to be
+    /// shorter than `block_count()` (Phase A snapshots have no list,
+    /// or `Doc::insert/delete` may have changed `\n` count without
+    /// touching the list) — accessors fall back to `Paragraph` when
+    /// an entry is missing. The list MAY also be longer than
+    /// `block_count()` after concurrent merges or Phase A deletes
+    /// that crossed boundaries; trailing entries are simply ignored.
+    fn blocks_list(&self) -> LoroMovableList {
+        self.inner.get_movable_list(BLOCKS_CONTAINER_ID)
+    }
+
+    /// Bring the blocks list up to `block_count()` by appending
+    /// "paragraph" defaults. Idempotent. Called before any block-
+    /// level mutation so the subsequent `.insert(idx, ..)` calls
+    /// land at valid positions.
+    fn pad_blocks_list(&self) {
+        let needed = self.block_count();
+        let blocks = self.blocks_list();
+        let current = blocks.len();
+        for _ in current..needed {
+            blocks
+                .push("paragraph")
+                .expect("blocks list push should not fail");
+        }
+    }
+
+    /// Block index containing codepoint position `p`. Convention:
+    /// positions ON a `\n` codepoint belong to the PRECEDING block
+    /// (the `\n` "ends" its preceding block).
+    fn block_idx_at(&self, p: Position) -> usize {
+        let body_text = self.body().to_string();
+        let mut block = 0;
+        for (i, ch) in body_text.chars().enumerate() {
+            if i == p {
+                return block;
+            }
+            if ch == '\n' {
+                block += 1;
+            }
+        }
+        block
+    }
+
+    /// `(start, end)` codepoint range of block `idx`, excluding
+    /// surrounding `\n`s. Caller must guarantee `idx < block_count()`.
+    fn block_range(&self, idx: usize) -> (Position, Position) {
+        let body_text = self.body().to_string();
+        let segments: Vec<&str> = body_text.split('\n').collect();
+        let start: usize = segments[..idx].iter().map(|s| s.chars().count() + 1).sum();
+        let end = start + segments[idx].chars().count();
+        (start, end)
+    }
+
+    /// Read the kind at `idx` from the blocks list, defaulting to
+    /// `Paragraph` if the list is shorter or the entry isn't a
+    /// recognised string.
+    fn block_kind_at(&self, idx: usize) -> BlockKind {
+        match self.blocks_list().get(idx) {
+            Some(ValueOrContainer::Value(LoroValue::String(s))) => str_to_kind(s.as_ref()),
+            _ => BlockKind::Paragraph,
+        }
+    }
+
+    /// Number of blocks in the document. An empty doc has exactly one
+    /// block (the implicit empty paragraph). Each `\n` codepoint in
+    /// the body adds one more block.
+    pub fn block_count(&self) -> usize {
+        self.body()
+            .to_string()
+            .chars()
+            .filter(|c| *c == '\n')
+            .count()
+            + 1
+    }
+
+    /// Block at `idx`, or `None` if `idx >= block_count()`. The
+    /// returned `Block::text` is the literal codepoint slice between
+    /// the two surrounding `\n`s (or doc edges).
+    pub fn block(&self, idx: usize) -> Option<Block> {
+        let body_text = self.body().to_string();
+        let segments: Vec<&str> = body_text.split('\n').collect();
+        if idx >= segments.len() {
+            return None;
+        }
+        Some(Block {
+            kind: self.block_kind_at(idx),
+            text: segments[idx].to_string(),
+        })
+    }
+}
+
+/// Encode a `BlockKind` as the canonical `LoroMovableList` string.
+/// Heading levels clamp into 1..=6; ListItem indent is preserved as-is.
+fn kind_to_str(kind: &BlockKind) -> String {
+    match kind {
+        BlockKind::Paragraph => "paragraph".into(),
+        BlockKind::Heading { level } => format!("heading:{}", (*level).clamp(1, 6)),
+        BlockKind::ListItem { indent } => format!("list-item:{indent}"),
+    }
+}
+
+/// Decode a kind from its canonical string. Unknown / malformed
+/// strings decode to `Paragraph` so forward-compat (a v1 client
+/// reading a v2 doc with kinds we don't yet recognise) renders as
+/// readable text rather than failing.
+fn str_to_kind(s: &str) -> BlockKind {
+    if let Some(rest) = s.strip_prefix("heading:") {
+        let level = rest.parse::<u8>().unwrap_or(1).clamp(1, 6);
+        BlockKind::Heading { level }
+    } else if let Some(rest) = s.strip_prefix("list-item:") {
+        let indent = rest.parse::<u8>().unwrap_or(0);
+        BlockKind::ListItem { indent }
+    } else {
+        BlockKind::Paragraph
     }
 }
 
@@ -338,15 +515,144 @@ impl Doc {
                 self.format(from..to, mark);
                 Ok(())
             }
-            EditOp::InsertBlock { .. } => Err(Error::NotYetImplemented("InsertBlock")),
-            EditOp::SplitBlock { .. } => Err(Error::NotYetImplemented("SplitBlock")),
-            EditOp::MergeBlocks { .. } => Err(Error::NotYetImplemented("MergeBlocks")),
+            EditOp::InsertBlock { at, block } => self.handle_insert_block(at, block),
+            EditOp::SplitBlock { at } => self.handle_split_block(at),
+            EditOp::MergeBlocks { first, second } => self.handle_merge_blocks(first, second),
             EditOp::InsertComment { .. } => Err(Error::NotYetImplemented("InsertComment")),
             EditOp::Suggest { .. } => Err(Error::NotYetImplemented("Suggest")),
             EditOp::AcceptSuggestion { .. } => Err(Error::NotYetImplemented("AcceptSuggestion")),
             EditOp::InsertCitation { .. } => Err(Error::NotYetImplemented("InsertCitation")),
             EditOp::InsertFootnote { .. } => Err(Error::NotYetImplemented("InsertFootnote")),
         }
+    }
+
+    /// Insert a new block at codepoint position `at`. The block
+    /// containing `at` is split (if `at` is mid-block) so the new
+    /// block sits between the two halves. The "before" half retains
+    /// the original kind; the new block carries `block.kind`; the
+    /// "after" half also retains the original kind. At a block
+    /// boundary, the new block is prepended/appended without
+    /// generating an empty side block.
+    fn handle_insert_block(&mut self, at: Position, block: Block) -> Result<(), Error> {
+        let body = self.body();
+        let len = body.len_unicode();
+        let at = at.min(len);
+
+        let block_idx = self.block_idx_at(at);
+        let (block_start, block_end) = self.block_range(block_idx);
+        let kind_old_str = kind_to_str(&self.block_kind_at(block_idx));
+        let new_kind_str = kind_to_str(&block.kind);
+
+        // Pad before any insert so subsequent .insert(idx, ..) calls
+        // land at valid positions (Loro lists allow insert up to len).
+        self.pad_blocks_list();
+        let blocks = self.blocks_list();
+
+        let offset_in_block = at - block_start;
+        let block_len = block_end - block_start;
+
+        if offset_in_block == 0 {
+            body.insert(at, &format!("{}\n", block.text))
+                .expect("loro insert should not fail");
+            blocks
+                .insert(block_idx, new_kind_str)
+                .expect("loro list insert should not fail");
+        } else if offset_in_block == block_len {
+            body.insert(at, &format!("\n{}", block.text))
+                .expect("loro insert should not fail");
+            blocks
+                .insert(block_idx + 1, new_kind_str)
+                .expect("loro list insert should not fail");
+        } else {
+            body.insert(at, &format!("\n{}\n", block.text))
+                .expect("loro insert should not fail");
+            // The "before" half stays at block_idx with kind_old.
+            // The new block goes at block_idx+1.
+            // The "after" half is at block_idx+2 — needs kind_old duplicated.
+            blocks
+                .insert(block_idx + 1, new_kind_str)
+                .expect("loro list insert should not fail");
+            blocks
+                .insert(block_idx + 2, kind_old_str)
+                .expect("loro list insert should not fail");
+        }
+        Ok(())
+    }
+
+    /// Split the block containing `at` into two at codepoint position
+    /// `at`. Both halves keep the original block's kind. Splitting at
+    /// a block boundary creates one empty block on the side opposite
+    /// the split direction.
+    fn handle_split_block(&mut self, at: Position) -> Result<(), Error> {
+        let body = self.body();
+        let len = body.len_unicode();
+        let at = at.min(len);
+        let block_idx = self.block_idx_at(at);
+        let kind_old_str = kind_to_str(&self.block_kind_at(block_idx));
+        self.pad_blocks_list();
+        let blocks = self.blocks_list();
+        body.insert(at, "\n").expect("loro insert should not fail");
+        // Equivalent-mutant note: cargo-mutants reports `block_idx + 1`
+        // → `block_idx` as a survivor here. It is mathematically
+        // equivalent: `kind_old_str` was just read from `blocks[block_idx]`,
+        // so inserting it at `block_idx` (mutated) or `block_idx + 1`
+        // (original) yields lists with identical contents at every
+        // index — the value already at `block_idx` is the same value
+        // we are inserting. Killing this would require a SplitBlock
+        // semantics change (eg. a sentinel "after-half" kind), which
+        // is out of scope for v0.
+        blocks
+            .insert(block_idx + 1, kind_old_str)
+            .expect("loro list insert should not fail");
+        Ok(())
+    }
+
+    /// Merge the blocks containing `first` and `second` if they are
+    /// directly adjacent (i.e. block_idx(second) == block_idx(first)+1).
+    /// Otherwise, no-op. The resulting block carries the kind of the
+    /// FIRST block (left wins).
+    fn handle_merge_blocks(&mut self, first: Position, second: Position) -> Result<(), Error> {
+        let body = self.body();
+        let len = body.len_unicode();
+        let f = first.min(len);
+        let s = second.min(len);
+        let i_first = self.block_idx_at(f);
+        let i_second = self.block_idx_at(s);
+        if i_first + 1 != i_second {
+            return Ok(());
+        }
+        // Find the codepoint position of the `\n` that separates
+        // block i_first from block i_first+1.
+        let body_text = body.to_string();
+        let mut block = 0;
+        let mut newline_pos: Option<usize> = None;
+        for (i, ch) in body_text.chars().enumerate() {
+            if ch == '\n' {
+                if block == i_first {
+                    newline_pos = Some(i);
+                    break;
+                }
+                block += 1;
+            }
+        }
+        // Adjacency check guarantees at least one `\n` between the
+        // two blocks, so `newline_pos` is always Some here. The let-
+        // else makes that explicit and removes a defensive arm.
+        let Some(nl) = newline_pos else {
+            return Ok(());
+        };
+        // Pad BEFORE the body delete so the list has at least
+        // i_second + 1 entries. That removes the need for a
+        // defensive `if blocks.len() > i_second` guard around the
+        // list delete (which would otherwise harbour a surviving
+        // mutant).
+        self.pad_blocks_list();
+        let blocks = self.blocks_list();
+        body.delete(nl, 1).expect("loro delete should not fail");
+        blocks
+            .delete(i_second, 1)
+            .expect("loro list delete should not fail");
+        Ok(())
     }
 }
 
