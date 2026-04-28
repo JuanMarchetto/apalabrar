@@ -27,6 +27,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Validation Gate 4 (OOXML round-trip moat GO/NO-GO): structural surface
+  in `apalabrar_format_docx` (`read(&[u8]) -> Result<DocModel, Error>`,
+  `write(&DocModel) -> Result<Vec<u8>, Error>`, plus `paragraph_count`,
+  `paragraph_text`, `set_paragraph_text` on `DocModel`) implementing the
+  shadow-store pattern: zip parts kept verbatim, `word/document.xml`
+  indexed once for paragraph-level edits via `quick-xml`, dirty
+  paragraphs spliced back into a fresh `document.xml` while every
+  byte-range around them and every other zip part round-trips
+  byte-equivalent (the lossless contract). Six fixtures committed under
+  `tests-corpus/` (5 LibreOffice-produced — academic / multilingual /
+  tables / footnotes — plus 1 synthetic `<w:p/>` self-closing edge case)
+  pass byte-equivalent round-trip after whitespace + attribute-order
+  normalization. 33 tests across the format-docx test surface (1 lib +
+  9 flat-text Gate-2 carry-over + 2 fuzz-companion properties + 16
+  structural round-trip + 5 insta YAML snapshots, all reviewed manually
+  before `cargo insta accept`). cargo-fuzz `docx_read` target ran
+  2 425 032 iterations in 601 s with 0 crashes / panics / OOMs / hangs
+  and 1775 covered features. cargo-mutants killed 34 / 36 mutants
+  (94.4 % — the two surviving mutations are inherently equivalent on
+  conformant OOXML and would require malformed synthetic input or
+  removal of defensive code to flip; documented as harmless). cargo
+  llvm-cov reports 91.21 % region / 94.39 % line coverage on
+  `format-docx::lib.rs` (function coverage understated by `thiserror`-
+  generated `Display` impls).
 - Validation Gate 2 (WASM bundle size GO/NO-GO for Path B):
   `apalabrar-format-docx::{parse_text, serialize_text}` (docx-rs round-trip
   through plain UTF-8 with `\n` paragraph separators) and
