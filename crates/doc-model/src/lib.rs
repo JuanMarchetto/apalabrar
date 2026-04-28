@@ -4,7 +4,8 @@
 use std::ops::Range;
 
 use loro::{
-    ExportMode, LoroDoc, LoroMovableList, LoroText, LoroValue, TextDelta, ValueOrContainer,
+    Container, ExportMode, LoroDoc, LoroMap, LoroMovableList, LoroText, LoroValue, TextDelta,
+    ValueOrContainer,
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -28,6 +29,32 @@ const TEXT_CONTAINER_ID: &str = "doc";
 /// One entry per block; `len(blocks) == count('\n' in body) + 1` is
 /// the invariant maintained by every block-level op.
 const BLOCKS_CONTAINER_ID: &str = "blocks";
+
+/// Stable container IDs for Phase C. `comments` and `suggestions`
+/// are root `LoroMap`s keyed by thread / suggestion id; each value
+/// is a sub-`LoroMap` storing the record's fields. `meta` holds
+/// monotonically-increasing counters used by the ID generator so
+/// generated IDs survive snapshot round-trips.
+const COMMENTS_CONTAINER_ID: &str = "comments";
+const SUGGESTIONS_CONTAINER_ID: &str = "suggestions";
+const META_CONTAINER_ID: &str = "meta";
+
+/// Meta keys used for ID generation counters.
+const META_KEY_NEXT_COMMENT: &str = "next_comment_id";
+const META_KEY_NEXT_SUGGESTION: &str = "next_suggestion_id";
+
+/// Sub-map field keys (kept private but defined as constants so
+/// `mutants` can't silently rename one without breaking tests).
+const FIELD_FROM: &str = "from";
+const FIELD_TO: &str = "to";
+const FIELD_BODY: &str = "body";
+const FIELD_REPLACEMENT: &str = "replacement";
+const FIELD_STATE: &str = "state";
+
+/// Suggestion-state string codes (single source of truth).
+const STATE_PENDING: &str = "pending";
+const STATE_ACCEPTED: &str = "accepted";
+const STATE_REJECTED: &str = "rejected";
 
 // ─────────────────────────────────────────────────────────────────
 // Block model: single-linearised (locked 2026-04-28, Phase B).
@@ -108,6 +135,16 @@ impl Mark {
 /// `[start, end)` over codepoints.
 pub struct Doc {
     inner: LoroDoc,
+    /// Transient: the thread_id assigned by the most recent
+    /// `apply_edit_op(InsertComment)` on this Doc instance. Reset on
+    /// `new` / `from_snapshot`. Not persisted in the CRDT — the
+    /// caller is expected to read this immediately after applying
+    /// the op.
+    last_comment_thread_id: Option<String>,
+    /// Transient: the id assigned by the most recent
+    /// `apply_edit_op(Suggest)` on this Doc instance. Same lifetime
+    /// rules as `last_comment_thread_id`.
+    last_suggestion_id: Option<String>,
 }
 
 impl Doc {
@@ -115,6 +152,8 @@ impl Doc {
     pub fn new() -> Self {
         Self {
             inner: LoroDoc::new(),
+            last_comment_thread_id: None,
+            last_suggestion_id: None,
         }
     }
 
@@ -189,7 +228,11 @@ impl Doc {
     pub fn from_snapshot(snapshot: &[u8]) -> Self {
         let inner = LoroDoc::from_snapshot(snapshot)
             .expect("loro from_snapshot should accept a previously exported snapshot");
-        Self { inner }
+        Self {
+            inner,
+            last_comment_thread_id: None,
+            last_suggestion_id: None,
+        }
     }
 
     /// Project the doc to a plain UTF-8 string.
@@ -343,6 +386,182 @@ fn str_to_kind(s: &str) -> BlockKind {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Comment + suggestion model (Phase C)
+// ─────────────────────────────────────────────────────────────────
+//
+// Storage shape:
+//   `comments`    : LoroMap, key = thread_id, value = sub-LoroMap
+//   `suggestions` : LoroMap, key = suggestion_id, value = sub-LoroMap
+//   `meta`        : LoroMap, holds I64 counters used by the ID gen
+//
+// Comment sub-map fields: `from`, `to` (I64 codepoint positions),
+// `body` (String).
+// Suggestion sub-map fields: `from`, `to`, `replacement`, `state`
+// (one of "pending" | "accepted" | "rejected").
+//
+// Anchor caveat: positions are RAW codepoints. They go stale if the
+// surrounding text is edited. Phase C v0 ships this; Phase C+ will
+// migrate to Loro-cursor-based stable anchors. The reason raw
+// positions ship first is the public Loro 1.12 surface: `Cursor` and
+// `Side` are NOT re-exported with `pub use`, so persisting a cursor
+// would require depending on the `loro_internal` crate. Adding that
+// dep was judged out of scope for this phase.
+
+impl Doc {
+    fn comments_map(&self) -> LoroMap {
+        self.inner.get_map(COMMENTS_CONTAINER_ID)
+    }
+
+    fn suggestions_map(&self) -> LoroMap {
+        self.inner.get_map(SUGGESTIONS_CONTAINER_ID)
+    }
+
+    fn meta_map(&self) -> LoroMap {
+        self.inner.get_map(META_CONTAINER_ID)
+    }
+
+    /// Read an i64 counter from the meta map, defaulting to 0.
+    fn meta_counter(&self, key: &str) -> i64 {
+        match self.meta_map().get(key) {
+            Some(ValueOrContainer::Value(LoroValue::I64(n))) => n,
+            _ => 0,
+        }
+    }
+
+    /// Generate a new id using the persistent counter under
+    /// `counter_key`. Format: `{prefix}-{peer_id_hex}-{counter}` so
+    /// IDs from different peers / different counters never collide.
+    fn next_id(&self, prefix: &str, counter_key: &str) -> String {
+        let n = self.meta_counter(counter_key);
+        self.meta_map()
+            .insert(counter_key, LoroValue::I64(n + 1))
+            .expect("loro meta map insert should not fail");
+        let peer = self.inner.peer_id();
+        format!("{prefix}-{peer:x}-{n}")
+    }
+
+    /// Sorted IDs of every comment thread in the doc.
+    pub fn comment_thread_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self.comments_map().keys().map(|k| k.to_string()).collect();
+        ids.sort();
+        ids
+    }
+
+    /// Comment by thread_id, or `None` if absent / malformed.
+    pub fn comment(&self, thread_id: &str) -> Option<Comment> {
+        let entry = match self.comments_map().get(thread_id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return None,
+        };
+        let from = read_i64_field(&entry, FIELD_FROM)? as usize;
+        let to = read_i64_field(&entry, FIELD_TO)? as usize;
+        let body = read_string_field(&entry, FIELD_BODY)?;
+        Some(Comment {
+            thread_id: thread_id.to_string(),
+            from,
+            to,
+            body,
+        })
+    }
+
+    /// Sorted IDs of every suggestion (any state).
+    pub fn suggestion_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .suggestions_map()
+            .keys()
+            .map(|k| k.to_string())
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    /// Suggestion by id, or `None` if absent / malformed.
+    pub fn suggestion(&self, id: &str) -> Option<Suggestion> {
+        let entry = match self.suggestions_map().get(id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return None,
+        };
+        let from = read_i64_field(&entry, FIELD_FROM)? as usize;
+        let to = read_i64_field(&entry, FIELD_TO)? as usize;
+        let replacement = read_string_field(&entry, FIELD_REPLACEMENT)?;
+        let state_str = read_string_field(&entry, FIELD_STATE)?;
+        Some(Suggestion {
+            id: id.to_string(),
+            from,
+            to,
+            replacement,
+            state: str_to_state(&state_str),
+        })
+    }
+
+    /// Sorted IDs of suggestions whose state is `Pending`.
+    pub fn pending_suggestion_ids(&self) -> Vec<String> {
+        self.suggestion_ids()
+            .into_iter()
+            .filter(|id| {
+                self.suggestion(id)
+                    .map(|s| s.state == SuggestionState::Pending)
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
+
+    /// The thread_id assigned by the most recent `InsertComment`
+    /// applied to this `Doc` instance. Transient — does NOT survive
+    /// snapshot / merge. Read this immediately after
+    /// `apply_edit_op(InsertComment)` to discover the generated id
+    /// when the caller passed `thread_id: None`.
+    pub fn last_comment_thread_id(&self) -> Option<String> {
+        self.last_comment_thread_id.clone()
+    }
+
+    /// The id assigned by the most recent `Suggest` applied to this
+    /// `Doc` instance. Transient. Read after `apply_edit_op(Suggest)`
+    /// to feed `EditOp::AcceptSuggestion { suggestion_id }`.
+    pub fn last_suggestion_id(&self) -> Option<String> {
+        self.last_suggestion_id.clone()
+    }
+}
+
+/// Read an `I64` field from a sub-map, returning `None` for absent /
+/// wrong-typed entries (defensive against forward-compat shape drift).
+fn read_i64_field(entry: &LoroMap, key: &str) -> Option<i64> {
+    match entry.get(key) {
+        Some(ValueOrContainer::Value(LoroValue::I64(n))) => Some(n),
+        _ => None,
+    }
+}
+
+/// Read a `String` field from a sub-map.
+fn read_string_field(entry: &LoroMap, key: &str) -> Option<String> {
+    match entry.get(key) {
+        Some(ValueOrContainer::Value(LoroValue::String(s))) => Some(s.to_string()),
+        _ => None,
+    }
+}
+
+/// Encode a `SuggestionState` as its canonical string. Phase C v0
+/// only ever writes `pending` or `accepted`; `rejected` is here for
+/// the future `RejectSuggestion` variant the blueprint will add.
+fn state_to_str(state: SuggestionState) -> &'static str {
+    match state {
+        SuggestionState::Pending => STATE_PENDING,
+        SuggestionState::Accepted => STATE_ACCEPTED,
+        SuggestionState::Rejected => STATE_REJECTED,
+    }
+}
+
+/// Decode a state string. Unknown / malformed strings fall back to
+/// `Pending` so the suggestion remains actionable.
+fn str_to_state(s: &str) -> SuggestionState {
+    match s {
+        STATE_ACCEPTED => SuggestionState::Accepted,
+        STATE_REJECTED => SuggestionState::Rejected,
+        _ => SuggestionState::Pending,
+    }
+}
+
 impl Default for Doc {
     fn default() -> Self {
         Self::new()
@@ -416,6 +635,41 @@ pub struct BlockTree {
     pub blocks: Vec<Block>,
 }
 
+/// Snapshot of a comment thread anchored to a codepoint range
+/// (Phase C). Anchors are RAW positions — they go stale as the
+/// surrounding text is edited. Phase C+ will replace this with
+/// Loro-cursor-based stable anchors when the public Cursor API is
+/// available (loro 1.12 hides Cursor / Side from `pub use`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comment {
+    pub thread_id: String,
+    pub from: Position,
+    pub to: Position,
+    pub body: String,
+}
+
+/// Lifecycle of a suggestion (Phase C). New suggestions land in
+/// `Pending`; `AcceptSuggestion` flips to `Accepted` and applies the
+/// text replacement. `Rejected` is reserved for a future
+/// `RejectSuggestion` variant — Phase C v0 only ships accept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SuggestionState {
+    Pending,
+    Accepted,
+    Rejected,
+}
+
+/// Snapshot of a suggestion record (Phase C). Same anchor caveat
+/// as `Comment`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Suggestion {
+    pub id: String,
+    pub from: Position,
+    pub to: Position,
+    pub replacement: String,
+    pub state: SuggestionState,
+}
+
 /// Cross-boundary edit verb. Variants 1-3 (`InsertText`,
 /// `DeleteRange`, `FormatRange`) are implemented; the remaining
 /// eight return `Error::NotYetImplemented`.
@@ -482,6 +736,10 @@ pub enum Error {
     /// exhaustively matching on `EditOp`.
     #[error("EditOp variant '{0}' is not yet implemented in this phase")]
     NotYetImplemented(&'static str),
+    /// `AcceptSuggestion` was called with an id that does not match
+    /// any stored suggestion (or the stored entry was malformed).
+    #[error("suggestion '{0}' not found")]
+    SuggestionNotFound(String),
 }
 
 impl Doc {
@@ -518,9 +776,20 @@ impl Doc {
             EditOp::InsertBlock { at, block } => self.handle_insert_block(at, block),
             EditOp::SplitBlock { at } => self.handle_split_block(at),
             EditOp::MergeBlocks { first, second } => self.handle_merge_blocks(first, second),
-            EditOp::InsertComment { .. } => Err(Error::NotYetImplemented("InsertComment")),
-            EditOp::Suggest { .. } => Err(Error::NotYetImplemented("Suggest")),
-            EditOp::AcceptSuggestion { .. } => Err(Error::NotYetImplemented("AcceptSuggestion")),
+            EditOp::InsertComment {
+                from,
+                to,
+                body,
+                thread_id,
+            } => self.handle_insert_comment(from, to, body, thread_id),
+            EditOp::Suggest {
+                from,
+                to,
+                replacement,
+            } => self.handle_suggest(from, to, replacement),
+            EditOp::AcceptSuggestion { suggestion_id } => {
+                self.handle_accept_suggestion(suggestion_id)
+            }
             EditOp::InsertCitation { .. } => Err(Error::NotYetImplemented("InsertCitation")),
             EditOp::InsertFootnote { .. } => Err(Error::NotYetImplemented("InsertFootnote")),
         }
@@ -654,6 +923,97 @@ impl Doc {
             .expect("loro list delete should not fail");
         Ok(())
     }
+
+    /// Anchor a comment thread to `[from, to)`. If `thread_id` is
+    /// `Some`, that id is used verbatim — useful for migrations and
+    /// for re-linking from external systems. If `None`, a fresh id
+    /// is generated via `next_id` and exposed via
+    /// `last_comment_thread_id()`. Existing entries with the same id
+    /// are overwritten field-by-field (last-write-wins per field).
+    fn handle_insert_comment(
+        &mut self,
+        from: Position,
+        to: Position,
+        body: String,
+        thread_id: Option<String>,
+    ) -> Result<(), Error> {
+        let id = thread_id.unwrap_or_else(|| self.next_id("c", META_KEY_NEXT_COMMENT));
+        let entry = self
+            .comments_map()
+            .get_or_create_container(&id, LoroMap::new())
+            .expect("loro get_or_create_container should not fail");
+        entry
+            .insert(FIELD_FROM, LoroValue::I64(from as i64))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_TO, LoroValue::I64(to as i64))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_BODY, body)
+            .expect("loro map insert should not fail");
+        self.last_comment_thread_id = Some(id);
+        Ok(())
+    }
+
+    /// Record a suggested replacement for `[from, to)`. The doc text
+    /// is NOT mutated — that happens on `AcceptSuggestion`. The new
+    /// suggestion lands in `Pending` state. The generated id is
+    /// surfaced via `last_suggestion_id()`.
+    fn handle_suggest(
+        &mut self,
+        from: Position,
+        to: Position,
+        replacement: String,
+    ) -> Result<(), Error> {
+        let id = self.next_id("s", META_KEY_NEXT_SUGGESTION);
+        let entry = self
+            .suggestions_map()
+            .get_or_create_container(&id, LoroMap::new())
+            .expect("loro get_or_create_container should not fail");
+        entry
+            .insert(FIELD_FROM, LoroValue::I64(from as i64))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_TO, LoroValue::I64(to as i64))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_REPLACEMENT, replacement)
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_STATE, state_to_str(SuggestionState::Pending))
+            .expect("loro map insert should not fail");
+        self.last_suggestion_id = Some(id);
+        Ok(())
+    }
+
+    /// Apply a previously-recorded suggestion: delete `[from, to)`,
+    /// insert `replacement` at `from`, mark the suggestion as
+    /// `Accepted`. Already-accepted/rejected suggestions are no-ops
+    /// (idempotent). Unknown ids return `Error::SuggestionNotFound`.
+    fn handle_accept_suggestion(&mut self, id: String) -> Result<(), Error> {
+        let entry = match self.suggestions_map().get(&id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return Err(Error::SuggestionNotFound(id)),
+        };
+        let state = read_string_field(&entry, FIELD_STATE)
+            .map(|s| str_to_state(&s))
+            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))?;
+        if state != SuggestionState::Pending {
+            return Ok(());
+        }
+        let from = read_i64_field(&entry, FIELD_FROM)
+            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))? as usize;
+        let to = read_i64_field(&entry, FIELD_TO)
+            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))? as usize;
+        let replacement = read_string_field(&entry, FIELD_REPLACEMENT)
+            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))?;
+        self.delete(from..to);
+        self.insert(from, &replacement);
+        entry
+            .insert(FIELD_STATE, state_to_str(SuggestionState::Accepted))
+            .expect("loro map insert should not fail");
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -663,5 +1023,38 @@ mod tests {
     #[test]
     fn loadable() {
         assert_eq!(VERSION, "0.0.0");
+    }
+
+    #[test]
+    fn str_to_state_decodes_all_three_kinds() {
+        // The `STATE_REJECTED` arm is unreachable through the public
+        // API in Phase C v0 (no `RejectSuggestion` variant ships
+        // yet), but it must still decode correctly for forward-compat
+        // when a future phase introduces `Reject`. This unit test
+        // also pins the unknown-string fall-through to `Pending`.
+        assert_eq!(str_to_state(STATE_PENDING), SuggestionState::Pending);
+        assert_eq!(str_to_state(STATE_ACCEPTED), SuggestionState::Accepted);
+        assert_eq!(str_to_state(STATE_REJECTED), SuggestionState::Rejected);
+        assert_eq!(str_to_state("garbage"), SuggestionState::Pending);
+    }
+
+    #[test]
+    fn state_to_str_round_trips_all_three_kinds() {
+        // Symmetric pin for the encode side. Catches any silent
+        // string-rename mutation (`STATE_REJECTED` is otherwise only
+        // referenced by `str_to_state`, so a renamed const wouldn't
+        // be caught without this).
+        assert_eq!(
+            str_to_state(state_to_str(SuggestionState::Pending)),
+            SuggestionState::Pending
+        );
+        assert_eq!(
+            str_to_state(state_to_str(SuggestionState::Accepted)),
+            SuggestionState::Accepted
+        );
+        assert_eq!(
+            str_to_state(state_to_str(SuggestionState::Rejected)),
+            SuggestionState::Rejected
+        );
     }
 }
