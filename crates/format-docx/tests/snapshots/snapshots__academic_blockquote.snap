@@ -1,0 +1,10 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(ACADEMIC_BLOCKQUOTE)
+---
+paragraph_count: 4
+paragraphs:
+  - Discussion
+  - "As noted in the seminal review by Anderson and Vega:"
+  - The reproducibility crisis is not a methodological failure of any single discipline; it is the predictable consequence of misaligned incentives across the entire scientific publishing apparatus.
+  - Our results align with this position.

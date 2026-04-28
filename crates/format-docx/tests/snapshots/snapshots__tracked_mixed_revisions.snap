@@ -1,0 +1,7 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TRACKED_MIXED)
+---
+paragraph_count: 1
+paragraphs:
+  - "The revised manuscript incorporates feedback from the second round of review, including the requested expansion of the methods section."

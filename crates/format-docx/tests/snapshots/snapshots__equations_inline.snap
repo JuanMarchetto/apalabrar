@@ -1,0 +1,15 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(EQUATIONS_INLINE)
+---
+paragraph_count: 9
+paragraphs:
+  - "The quadratic formula gives x = (−b ± √(b² − 4ac)) ÷ 2a, valid when a ≠ 0."
+  - ""
+  - "Euler's identity: e^(iπ) + 1 = 0."
+  - ""
+  - The probability density of a normal distribution is f(x) = (1 ÷ (σ√(2π))) · e^(−(x−μ)² ÷ (2σ²)).
+  - ""
+  - "For a vector field F, the divergence theorem states ∫∫∫ (∇·F) dV = ∮∮ F·dS."
+  - ""
+  - "The Cauchy–Schwarz inequality: |⟨u, v⟩| ≤ ‖u‖ · ‖v‖ for any inner-product space."

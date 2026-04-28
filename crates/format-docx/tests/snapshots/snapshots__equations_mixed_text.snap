@@ -1,0 +1,9 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(EQUATIONS_MIXED_TEXT)
+---
+paragraph_count: 3
+paragraphs:
+  - The Reynolds number Re = ρvL/μ characterises the flow regime. Below Re ≈ 2300 the flow is laminar; above Re ≈ 4000 it becomes turbulent. The transitional regime spans roughly 2300 ≤ Re ≤ 4000.
+  - "Energy balance gives ΔE = Q − W, where Q is heat added and W is work done by the system."
+  - "The wave equation ∂²u/∂t² = c² ∇²u admits solutions of the form u(x, t) = f(x − ct) + g(x + ct)."

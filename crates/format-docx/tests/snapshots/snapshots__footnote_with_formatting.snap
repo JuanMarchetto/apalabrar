@@ -1,0 +1,7 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(FOOTNOTE_WITH_FORMATTING)
+---
+paragraph_count: 1
+paragraphs:
+  - The framework outlined by the authors emphasises reproducibility above novelty.

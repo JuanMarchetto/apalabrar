@@ -1,0 +1,8 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TRACKED_DELETION)
+---
+paragraph_count: 2
+paragraphs:
+  - The introduction sets up the central question.
+  - The methodology then follows.

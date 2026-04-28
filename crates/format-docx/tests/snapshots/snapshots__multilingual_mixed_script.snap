@@ -1,0 +1,15 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(MULTILINGUAL_MIXED_SCRIPT)
+---
+paragraph_count: 9
+paragraphs:
+  - "English title: Cross-script handling test."
+  - ""
+  - "Greek (modern): Η αξιολόγηση των αλγορίθμων μηχανικής μάθησης απαιτεί προσεκτικό σχεδιασμό πειραμάτων. Λέξεις-κλειδιά: μηχανική μάθηση, αλγόριθμοι, αξιολόγηση."
+  - ""
+  - "Spanish: La evaluación de los algoritmos de aprendizaje automático exige un diseño experimental cuidadoso. Palabras clave: aprendizaje automático, algoritmos, evaluación."
+  - ""
+  - "Polish: Ocena algorytmów uczenia maszynowego wymaga starannego projektowania eksperymentów. Słowa kluczowe: uczenie maszynowe, algorytmy, ocena, łączność."
+  - ""
+  - "Czech: Hodnocení algoritmů strojového učení vyžaduje pečlivý návrh experimentů. Klíčová slova: strojové učení, algoritmy, hodnocení."

@@ -1,0 +1,9 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(FOOTNOTES_CROSS_PARAGRAPH)
+---
+paragraph_count: 3
+paragraphs:
+  - The introduction frames the question in concrete terms.
+  - The methods section then situates the study within the broader literature.
+  - Results follow in the next section.

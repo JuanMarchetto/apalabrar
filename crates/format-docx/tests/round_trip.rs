@@ -1,22 +1,22 @@
-//! RED-phase OOXML round-trip tests for Validation Gate 4.
+//! OOXML round-trip tests for Validation Gate 4.
 //!
 //! Coverage:
-//! - 5 corpus fixtures, each round-trips byte-equivalent after whitespace +
-//!   attribute-order normalization.
+//! - 25 corpus fixtures (Phase 2.6 expansion) across 6 categories
+//!   plus one synthetic edge case, each round-trips byte-equivalent
+//!   after whitespace + attribute-order normalization.
 //! - One modify-then-write test that asserts only `word/document.xml`
 //!   changes after a paragraph edit; every other zip part (styles,
 //!   settings, fontTable, etc.) is preserved verbatim.
 //! - Error-path tests for empty / non-zip / non-docx input.
 //! - Multibyte LATAM round-trip via the structural surface (cross-checks
 //!   against parse_text from Gate 2).
-//!
-//! Tests fail at `todo!()` in `read` / `write` until the GREEN phase
-//! wires the zip + quick-xml shadow-store implementation.
 
 use apalabrar_format_docx::{Error, read, write};
 
 mod common;
 use common::{assert_unchanged_parts_equivalent, assert_zip_xml_equivalent};
+
+// ---------- Validation Gate 4 starter set (5 fixtures) ----------
 
 const SIMPLE_PARAGRAPH: &[u8] =
     include_bytes!("../../../tests-corpus/academic/simple-paragraph.docx");
@@ -29,6 +29,46 @@ const SINGLE_FOOTNOTE: &[u8] =
     include_bytes!("../../../tests-corpus/footnotes/single-footnote.docx");
 const EMPTY_SELF_CLOSING: &[u8] =
     include_bytes!("../../../tests-corpus/synthetic/empty-self-closing-paragraph.docx");
+
+// ---------- Phase 2.6 expansion (20 fixtures) ----------
+
+const ACADEMIC_NUMBERED_LIST: &[u8] =
+    include_bytes!("../../../tests-corpus/academic/numbered-list.docx");
+const ACADEMIC_BLOCKQUOTE: &[u8] = include_bytes!("../../../tests-corpus/academic/blockquote.docx");
+const ACADEMIC_MIXED_EMPHASIS: &[u8] =
+    include_bytes!("../../../tests-corpus/academic/mixed-emphasis.docx");
+
+const MULTILINGUAL_PORTUGUESE: &[u8] =
+    include_bytes!("../../../tests-corpus/multilingual/portuguese.docx");
+const MULTILINGUAL_FRENCH_GERMAN: &[u8] =
+    include_bytes!("../../../tests-corpus/multilingual/french-german.docx");
+const MULTILINGUAL_MIXED_SCRIPT: &[u8] =
+    include_bytes!("../../../tests-corpus/multilingual/mixed-script.docx");
+
+const TABLES_MERGED_CELLS: &[u8] = include_bytes!("../../../tests-corpus/tables/merged-cells.docx");
+const TABLES_MULTI_ROW_HEADER: &[u8] =
+    include_bytes!("../../../tests-corpus/tables/multi-row-header.docx");
+const TABLES_NUMERIC_DATA: &[u8] = include_bytes!("../../../tests-corpus/tables/numeric-data.docx");
+
+const FOOTNOTES_MULTIPLE: &[u8] =
+    include_bytes!("../../../tests-corpus/footnotes/multiple-footnotes.docx");
+const FOOTNOTE_WITH_FORMATTING: &[u8] =
+    include_bytes!("../../../tests-corpus/footnotes/footnote-with-formatting.docx");
+const FOOTNOTES_CROSS_PARAGRAPH: &[u8] =
+    include_bytes!("../../../tests-corpus/footnotes/cross-paragraph-footnotes.docx");
+
+const EQUATIONS_INLINE: &[u8] =
+    include_bytes!("../../../tests-corpus/equations/inline-formulae.docx");
+const EQUATIONS_GREEK: &[u8] = include_bytes!("../../../tests-corpus/equations/greek-symbols.docx");
+const EQUATIONS_DISPLAY: &[u8] =
+    include_bytes!("../../../tests-corpus/equations/display-math.docx");
+const EQUATIONS_MIXED_TEXT: &[u8] =
+    include_bytes!("../../../tests-corpus/equations/mixed-text.docx");
+
+const TRACKED_INSERTION: &[u8] = include_bytes!("../../../tests-corpus/tracked/insertion.docx");
+const TRACKED_DELETION: &[u8] = include_bytes!("../../../tests-corpus/tracked/deletion.docx");
+const TRACKED_COMMENTS: &[u8] = include_bytes!("../../../tests-corpus/tracked/comments.docx");
+const TRACKED_MIXED: &[u8] = include_bytes!("../../../tests-corpus/tracked/mixed-revisions.docx");
 
 fn assert_unmodified_roundtrip(label: &str, fixture: &[u8]) {
     let model = read(fixture).expect("read");
@@ -61,6 +101,108 @@ fn roundtrip_simple_table_is_byte_equivalent_after_normalization() {
 #[test]
 fn roundtrip_single_footnote_is_byte_equivalent_after_normalization() {
     assert_unmodified_roundtrip("single-footnote", SINGLE_FOOTNOTE);
+}
+
+// ---------- Phase 2.6 round-trips (20 fixtures) ----------
+
+#[test]
+fn roundtrip_academic_numbered_list() {
+    assert_unmodified_roundtrip("academic-numbered-list", ACADEMIC_NUMBERED_LIST);
+}
+
+#[test]
+fn roundtrip_academic_blockquote() {
+    assert_unmodified_roundtrip("academic-blockquote", ACADEMIC_BLOCKQUOTE);
+}
+
+#[test]
+fn roundtrip_academic_mixed_emphasis() {
+    assert_unmodified_roundtrip("academic-mixed-emphasis", ACADEMIC_MIXED_EMPHASIS);
+}
+
+#[test]
+fn roundtrip_multilingual_portuguese() {
+    assert_unmodified_roundtrip("multilingual-portuguese", MULTILINGUAL_PORTUGUESE);
+}
+
+#[test]
+fn roundtrip_multilingual_french_german() {
+    assert_unmodified_roundtrip("multilingual-french-german", MULTILINGUAL_FRENCH_GERMAN);
+}
+
+#[test]
+fn roundtrip_multilingual_mixed_script() {
+    assert_unmodified_roundtrip("multilingual-mixed-script", MULTILINGUAL_MIXED_SCRIPT);
+}
+
+#[test]
+fn roundtrip_tables_merged_cells() {
+    assert_unmodified_roundtrip("tables-merged-cells", TABLES_MERGED_CELLS);
+}
+
+#[test]
+fn roundtrip_tables_multi_row_header() {
+    assert_unmodified_roundtrip("tables-multi-row-header", TABLES_MULTI_ROW_HEADER);
+}
+
+#[test]
+fn roundtrip_tables_numeric_data() {
+    assert_unmodified_roundtrip("tables-numeric-data", TABLES_NUMERIC_DATA);
+}
+
+#[test]
+fn roundtrip_footnotes_multiple() {
+    assert_unmodified_roundtrip("footnotes-multiple", FOOTNOTES_MULTIPLE);
+}
+
+#[test]
+fn roundtrip_footnote_with_formatting() {
+    assert_unmodified_roundtrip("footnote-with-formatting", FOOTNOTE_WITH_FORMATTING);
+}
+
+#[test]
+fn roundtrip_footnotes_cross_paragraph() {
+    assert_unmodified_roundtrip("footnotes-cross-paragraph", FOOTNOTES_CROSS_PARAGRAPH);
+}
+
+#[test]
+fn roundtrip_equations_inline() {
+    assert_unmodified_roundtrip("equations-inline", EQUATIONS_INLINE);
+}
+
+#[test]
+fn roundtrip_equations_greek_symbols() {
+    assert_unmodified_roundtrip("equations-greek-symbols", EQUATIONS_GREEK);
+}
+
+#[test]
+fn roundtrip_equations_display_math() {
+    assert_unmodified_roundtrip("equations-display-math", EQUATIONS_DISPLAY);
+}
+
+#[test]
+fn roundtrip_equations_mixed_text() {
+    assert_unmodified_roundtrip("equations-mixed-text", EQUATIONS_MIXED_TEXT);
+}
+
+#[test]
+fn roundtrip_tracked_insertion() {
+    assert_unmodified_roundtrip("tracked-insertion", TRACKED_INSERTION);
+}
+
+#[test]
+fn roundtrip_tracked_deletion() {
+    assert_unmodified_roundtrip("tracked-deletion", TRACKED_DELETION);
+}
+
+#[test]
+fn roundtrip_tracked_comments() {
+    assert_unmodified_roundtrip("tracked-comments", TRACKED_COMMENTS);
+}
+
+#[test]
+fn roundtrip_tracked_mixed_revisions() {
+    assert_unmodified_roundtrip("tracked-mixed-revisions", TRACKED_MIXED);
 }
 
 // ---------- Lossless preservation under modification ----------

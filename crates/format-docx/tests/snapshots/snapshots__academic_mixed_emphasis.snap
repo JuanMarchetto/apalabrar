@@ -1,0 +1,9 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(ACADEMIC_MIXED_EMPHASIS)
+---
+paragraph_count: 3
+paragraphs:
+  - Abstract
+  - This study examines longitudinal patterns in cohort retention across four institutions. We find that both structural and cultural factors predict outcomes.
+  - "Keywords: retention, cohorts, higher education."

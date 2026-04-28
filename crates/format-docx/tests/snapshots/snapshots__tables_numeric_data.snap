@@ -1,0 +1,27 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(TABLES_NUMERIC_DATA)
+---
+paragraph_count: 21
+paragraphs:
+  - Variable
+  - Mean
+  - SD
+  - Min
+  - Max
+  - x1
+  - "3.14"
+  - "0.42"
+  - "2.01"
+  - "4.55"
+  - x2
+  - "7.82"
+  - "1.13"
+  - "5.40"
+  - "9.91"
+  - x3
+  - "0.96"
+  - "0.18"
+  - "0.41"
+  - "1.32"
+  - ""

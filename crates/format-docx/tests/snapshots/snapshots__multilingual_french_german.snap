@@ -1,0 +1,11 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(MULTILINGUAL_FRENCH_GERMAN)
+---
+paragraph_count: 5
+paragraphs:
+  - "Français: Le développement des modèles d'apprentissage profond a transformé la manière dont nous abordons la traduction automatique. Les caractères diacritiques (à, é, è, ê, ï, ô, ù, ç) sont préservés à travers la chaîne de traitement. L'étude porte sur cinq paires de langues européennes."
+  - ""
+  - "Deutsch: Die Entwicklung tiefer neuronaler Netze hat die maschinelle Übersetzung grundlegend verändert. Umlaute (ä, ö, ü, ß) werden in der gesamten Verarbeitungskette beibehalten. Die Untersuchung umfasst fünf europäische Sprachpaare und berücksichtigt Größenunterschiede der Trainingsdaten."
+  - ""
+  - "Italiano: Le città di Bologna, Milano e Napoli sono incluse nell'analisi comparativa. Caratteri accentati: à, è, é, ì, ò, ù."

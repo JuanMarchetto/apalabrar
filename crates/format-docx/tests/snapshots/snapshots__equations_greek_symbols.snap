@@ -1,0 +1,13 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(EQUATIONS_GREEK)
+---
+paragraph_count: 7
+paragraphs:
+  - "Greek letters used in physics notation: α (alpha), β (beta), γ (gamma), Δ (capital delta), ε (epsilon), ζ (zeta), η (eta), θ (theta), λ (lambda), μ (mu), π (pi), σ (sigma), Σ (capital sigma), τ (tau), φ (phi), ω (omega), Ω (capital omega)."
+  - ""
+  - "Common physical constants: ℏ (reduced Planck constant), c (speed of light), G (gravitational constant), kB (Boltzmann constant)."
+  - ""
+  - "Schrödinger's time-dependent equation: iℏ ∂ψ/∂t = Ĥψ."
+  - ""
+  - "Maxwell's equations in vacuum: ∇·E = ρ/ε₀, ∇·B = 0, ∇×E = −∂B/∂t, ∇×B = μ₀(J + ε₀ ∂E/∂t)."

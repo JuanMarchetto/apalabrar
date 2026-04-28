@@ -1,0 +1,12 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(EQUATIONS_DISPLAY)
+---
+paragraph_count: 6
+paragraphs:
+  - Theorem
+  - "Let f be a continuous function on [a, b]. Then there exists c ∈ (a, b) such that:"
+  - ∫ab f(x) dx = f(c) · (b − a)
+  - This is the mean-value theorem for definite integrals.
+  - Corollary
+  - "For any non-negative continuous function f, the average value over [a, b] equals f(c) for some c in the open interval."

@@ -1,0 +1,8 @@
+---
+source: crates/format-docx/tests/snapshots.rs
+expression: summary(FOOTNOTES_MULTIPLE)
+---
+paragraph_count: 2
+paragraphs:
+  - The first observation highlighted unexpected variation. The second independent dataset corroborated the pattern. A third dataset served as a held-out validation set.
+  - The pooled analysis yielded a robust effect size.
