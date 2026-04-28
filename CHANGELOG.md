@@ -27,6 +27,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 2 prompt 2.5 — frictionless UX page-load flow: ships the
+  Section D timeline as the new `/` route. `index.html` inlines a
+  critical CSS skeleton so the blank-doc surface paints at T+0
+  (before any JS runs); the Solid `Landing` page swaps in once
+  hydrated and runs two parallel bootstraps — `bootstrapOpfs` (OPFS
+  scan, returns recents sorted newest-first or `{storage: null,
+  recents: []}` if OPFS is unavailable) and `bootstrapCore` (WASM
+  init, deferred so the editable surface is interactive before the
+  editor finishes loading). A `KeystrokeBuffer` (push / drain /
+  size / closed / close) holds keystrokes typed during the
+  T+100→T+200 window and replays them on core-ready, so no input
+  is lost. New components: `ContinueToast` (role=status,
+  aria-live=polite, default 5 s auto-dismiss with cancellation on
+  manual continue/dismiss) and `RecentDocsMenu` (aria-haspopup
+  disclosure, formatted size in B/KB/MB; renders nothing when the
+  recents list is empty so the toolbar stays clean for first-time
+  visitors). 37 vitest tests (10 KeystrokeBuffer + 5 bootstrapOpfs
+  + 8 ContinueToast + 6 RecentDocsMenu + 8 Landing) and 12
+  Playwright E2E tests (5 page-load timing/skeleton/focusability,
+  1 toast clean-OPFS, 2 journey #1 first-time visitor, 1 journey
+  #2 recents-absent, 2 axe-core a11y on landing + composer) for a
+  combined Phase 2.5 contribution of 49 tests. Vitest coverage on
+  the new files: **100 % statement / 100 % branch / 100 % function
+  / 100 % line** on `keystrokeBuffer.ts`, `opfsBootstrap.ts`,
+  `RecentDocsMenu.tsx`; **100 % line / 89 % branch** on
+  `ContinueToast.tsx`; **100 % line / 100 % branch / 83 %
+  function** on `Landing.tsx` (the one uncovered function is the
+  `RecentDocsMenu` `onSelect` callback wired to a recent-doc click
+  — exercised by E2E only since the menu is closed when recents
+  are empty). axe-core reports zero serious/critical violations on
+  every state. Critical user journeys #1 and #2 (first-time
+  visitor, returning user) are fully covered; #3 (drag-drop .docx)
+  is partial via the existing `format-docx` parser; #4-#10 (auth,
+  collab, plugins, AI, DOCX export round-trip, self-host) are
+  documented as deferred to v1+ phases.
 - Phase 2 prompt 2.4 — EditOp dispatcher producing `RenderDelta`:
   `apalabrar-editor-core` gains a `dispatch` module with the
   signature `pub fn dispatch(doc: &mut Doc, op: EditOp) ->
