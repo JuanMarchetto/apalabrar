@@ -28,6 +28,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 3 prompt 3.2 — `format-docx` write path under TDD discipline. Adds
+  `pub fn write_preserve(doc, shadow) -> Result<Vec<u8>, Error>` mirroring
+  `read_preserve`: the `ShadowXml` snapshot is the source of truth for every
+  zip part the structural model didn't touch, while `DocModel`-side
+  paragraph mutations are spliced into the shadow's `word/document.xml`.
+  For an unmutated `DocModel`, `write_preserve` produces bytes
+  byte-equivalent (after XML normalization) to those that produced
+  `(doc, shadow)`. Refactor: `write` and `write_preserve` now share an
+  `effective_document_xml` decision helper plus a `build_zip` emitter so
+  the moat-critical zip writing has a single test/mutation surface.
+  9 new tests in `tests/write_preserve.rs`: model-equivalent round-trip
+  via `write` across all 26 fixtures (with and without mutation),
+  byte-equivalent lossless round-trip via `write_preserve` across all
+  26, "non-document parts come from shadow" probe, dirty-document-xml
+  re-read probe, equivalence between `write` and `write_preserve` on
+  unmutated models, plus two proptest properties (valid OOXML
+  losslessly round-trips, single-paragraph mutation propagates
+  correctly). Coverage on the new layer is 100% line; the only
+  uncovered lines in the crate (56, 59) are pre-existing
+  `parse_text` gaps from Phase 1 unrelated to this prompt.
 - Phase 3 prompt 3.1 — `format-docx` read path under TDD discipline. Adds
   `pub fn read_preserve(bytes) -> Result<(DocModel, ShadowXml), Error>`
   alongside the existing `read`. `ShadowXml` is a verbatim snapshot of every
