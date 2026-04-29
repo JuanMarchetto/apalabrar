@@ -1,0 +1,51 @@
+---
+source: crates/layout/tests/glyph_run_snapshots.rs
+assertion_line: 70
+expression: summarize(&plan)
+---
+run_count: 1
+runs:
+  - block_index: 0
+    line_index: 0
+    font_size_px_round: 24
+    glyph_count: 9
+    glyph_ids:
+      - 36
+      - 83
+      - 68
+      - 79
+      - 68
+      - 69
+      - 85
+      - 68
+      - 85
+    cluster_starts:
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+    x_px_round:
+      - 0
+      - 16
+      - 32
+      - 46
+      - 53
+      - 68
+      - 83
+      - 93
+      - 108
+    width_px_round:
+      - 16
+      - 15
+      - 15
+      - 7
+      - 15
+      - 15
+      - 10
+      - 15
+      - 10

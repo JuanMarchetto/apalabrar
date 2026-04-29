@@ -1,0 +1,131 @@
+---
+source: crates/layout/tests/glyph_run_snapshots.rs
+assertion_line: 86
+expression: summarize(&plan)
+---
+run_count: 2
+runs:
+  - block_index: 0
+    line_index: 0
+    font_size_px_round: 14
+    glyph_count: 12
+    glyph_ids:
+      - 47
+      - 82
+      - 85
+      - 72
+      - 80
+      - 3
+      - 76
+      - 83
+      - 86
+      - 88
+      - 80
+      - 17
+    cluster_starts:
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+    x_px_round:
+      - 0
+      - 8
+      - 16
+      - 22
+      - 30
+      - 44
+      - 48
+      - 52
+      - 61
+      - 68
+      - 77
+      - 91
+    width_px_round:
+      - 8
+      - 9
+      - 5
+      - 9
+      - 14
+      - 4
+      - 4
+      - 9
+      - 7
+      - 9
+      - 14
+      - 4
+  - block_index: 1
+    line_index: 0
+    font_size_px_round: 14
+    glyph_count: 15
+    glyph_ids:
+      - 39
+      - 82
+      - 79
+      - 82
+      - 85
+      - 3
+      - 86
+      - 76
+      - 87
+      - 3
+      - 68
+      - 80
+      - 72
+      - 87
+      - 17
+    cluster_starts:
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+    x_px_round:
+      - 0
+      - 11
+      - 19
+      - 23
+      - 32
+      - 38
+      - 42
+      - 49
+      - 53
+      - 59
+      - 63
+      - 72
+      - 85
+      - 94
+      - 99
+    width_px_round:
+      - 11
+      - 9
+      - 4
+      - 9
+      - 6
+      - 4
+      - 7
+      - 4
+      - 5
+      - 4
+      - 9
+      - 14
+      - 9
+      - 5
+      - 4

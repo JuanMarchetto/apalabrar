@@ -11,6 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 4 prompt 4.2 — text shaping integration. New `crates/layout/src/shaping.rs`
+  sub-module exposes `pub struct GlyphRun { block_index, line_index,
+  font_size_px, baseline_y_px, glyphs: Vec<PositionedGlyph> }` and
+  `pub struct PositionedGlyph { glyph_id, cluster_start, cluster_end,
+  x_px, y_px, width_px }`. `RenderPlan` gains a `pub glyph_runs:
+  Vec<GlyphRun>` field (additive on `#[non_exhaustive]`); one entry
+  per shaped non-empty line. Glyphs come from
+  `cosmic_text::Buffer::layout_runs()` which is itself rustybuzz-
+  driven shaping; we extract glyph_id, byte→codepoint-converted
+  cluster range (so the bridge sees codepoint offsets matching
+  doc-model's `Position`), and per-glyph hitbox (`x`, `y`, `w`). The
+  thread-local cache now stores per-line glyphs alongside line
+  geometry so cache hits skip both reshaping and glyph extraction.
+  Removed the dead synthetic-empty-line branch (cosmic-text 0.12
+  always emits at least one `LayoutRun`, even for empty text). 25
+  new tests across `tests/glyph_runs.rs` (20: shape + invariants —
+  cluster monotonicity, x-position monotonicity, glyph_id != 0 for
+  ASCII, font_size matches per-kind metrics, multibyte LATAM/CJK,
+  PUA markers, determinism, hit-testing first-cluster-zero, traits)
+  and `tests/glyph_run_snapshots.rs` (5: visual regression on
+  hello-world, h1 heading, LATAM diacritics, multi-paragraph,
+  wrapped paragraph; lossy projection that rounds floats and
+  captures glyph_id + cluster_start + x + width sequences).
+  Quality: 98 tests pass; bench p95 = 9.07 ms (5.5× under the
+  50 ms gate, vs 4.36 ms at 4.1 — the 2× delta is the cost of
+  cloning 66K glyph entries per call); 99.08% line / 98.69% region
+  coverage; mutation kill 52/57 viable = 91.23% (same 5 documented
+  equivalents as 4.1, no new survivors).
 - Phase 4 prompt 4.1 — `layout` crate refactored to the canonical
   Phase 4.1 surface. New free-fn `pub fn layout(doc: &Doc, viewport:
   &Viewport) -> Result<RenderPlan, Error>` consumes the doc-model
