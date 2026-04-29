@@ -28,6 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 3 prompt 3.3 — `format-md` Markdown read/write under TDD discipline.
+  Adds `pub fn read_md(s) -> Result<DocModel, Error>` + `pub fn write_md(doc)
+  -> Result<String, Error>`. The structural model classifies top-level
+  blocks (Paragraph / Heading(1-6) / List / BlockQuote / CodeBlock / Table
+  / ThematicBreak / FootnoteDefinition) and projects each to inline text;
+  the original source is held verbatim so `write_md` round-trips
+  byte-equivalent on unmodified models — same lossless-by-default
+  pattern Phase 3.1/3.2 established for `format-docx`.
+  Parser uses `pulldown-cmark` 0.12 with all GFM extensions enabled
+  (tables, footnotes, strikethrough, task lists). 50 new tests:
+  44 spec + GFM unit tests covering ATX/Setext headings (1-6),
+  paragraphs with inline emphasis/code/links/images, ordered + unordered
+  + nested lists, single + multi-line block quotes, fenced + indented
+  code blocks, all three thematic-break syntaxes, multi-block
+  documents, empty/whitespace edge cases, LATAM diacritics + CJK,
+  GFM pipe tables, GFM footnotes (ref + definition), GFM task lists,
+  and GFM strikethrough; 5 round-trip tests asserting byte-equivalent
+  emit + paragraph_count + block_kind + paragraph_text preservation
+  across 23 fixtures; 2 proptest properties (256 cases) on never-panic
+  + index-resolution; 1 round-trip property (128 cases) on editable-
+  surface preservation.
 - Phase 3 prompt 3.2 — `format-docx` write path under TDD discipline. Adds
   `pub fn write_preserve(doc, shadow) -> Result<Vec<u8>, Error>` mirroring
   `read_preserve`: the `ShadowXml` snapshot is the source of truth for every
