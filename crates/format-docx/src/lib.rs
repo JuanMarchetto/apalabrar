@@ -247,20 +247,63 @@ pub fn read_preserve(bytes: &[u8]) -> Result<(DocModel, ShadowXml), Error> {
 /// `word/document.xml` while the unchanged byte ranges around them stay
 /// exactly as they were on disk.
 pub fn write(doc: &DocModel) -> Result<Vec<u8>, Error> {
-    let document_xml = if doc.document.dirty {
+    let document_xml = effective_document_xml(doc, &doc.document.raw);
+    build_zip(&doc.parts, &document_xml)
+}
+
+// ---------------------------------------------------------------------------
+// Lossless write
+// ---------------------------------------------------------------------------
+//
+// Mirror to `read_preserve`. `write_preserve` produces `.docx` bytes
+// using the `ShadowXml` snapshot as the source of truth for every zip
+// part the structural model didn't touch; `DocModel`-side paragraph
+// edits are spliced into the shadow's `word/document.xml`. For an
+// unmodified `DocModel`, the output round-trips byte-equivalent to
+// the original input that produced the shadow.
+
+/// Serialize a (possibly mutated) `DocModel` back to `.docx` bytes
+/// using the original `ShadowXml` as the verbatim source for every
+/// part the structural surface doesn't interpret. Dirty paragraphs in
+/// the `DocModel` are spliced into the shadow's `word/document.xml`;
+/// every other byte (other parts, unindexed regions of the document
+/// part) is re-emitted verbatim from the shadow. For an unmutated
+/// `DocModel`, the output is byte-equivalent to the bytes that
+/// produced `(doc, shadow)` via `read_preserve` (after the same
+/// XML normalization the round-trip suite applies).
+pub fn write_preserve(doc: &DocModel, shadow: &ShadowXml) -> Result<Vec<u8>, Error> {
+    let document_xml = effective_document_xml(doc, shadow.document_xml());
+    build_zip(&shadow.parts, &document_xml)
+}
+
+/// Decide which bytes the output's `word/document.xml` should carry:
+/// the dirty rebuild when the model has paragraph mutations, or the
+/// pristine original document.xml from the chosen source otherwise.
+/// Shared by `write` (source: `doc.document.raw`) and `write_preserve`
+/// (source: `shadow.document_xml()`); those two slices come from the
+/// same archive so the unmodified branch produces identical bytes
+/// either way.
+fn effective_document_xml(doc: &DocModel, original: &[u8]) -> Vec<u8> {
+    if doc.document.dirty {
         rebuild_document_xml(&doc.document)
     } else {
-        doc.document.raw.clone()
-    };
+        original.to_vec()
+    }
+}
+
+/// Emit a `.docx` zip from a parts map plus an override for
+/// `word/document.xml`. Iteration order follows the BTreeMap so the
+/// output's part order is stable and lexicographic.
+fn build_zip(parts: &BTreeMap<String, Vec<u8>>, document_xml: &[u8]) -> Result<Vec<u8>, Error> {
     let mut buf: Vec<u8> = Vec::new();
     {
         let mut zip = ZipWriter::new(Cursor::new(&mut buf));
         let options = FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-        for (name, content) in &doc.parts {
+        for (name, content) in parts {
             zip.start_file(name, options)
                 .map_err(|e| Error::InvalidZip(e.to_string()))?;
             let bytes: &[u8] = if name == DOCUMENT_PART {
-                &document_xml
+                document_xml
             } else {
                 content
             };
