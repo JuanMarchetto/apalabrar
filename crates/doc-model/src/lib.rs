@@ -387,6 +387,29 @@ impl Doc {
             text: segments[idx].to_string(),
         })
     }
+
+    /// Project every block at once. O(text length + block count) —
+    /// equivalent to `(0..block_count()).map(|i| block(i).unwrap())`
+    /// but does the body-clone and split exactly once instead of per
+    /// call. Use this when you need the full block list (eg. layout,
+    /// export to OOXML); use `block(idx)` only when you need exactly
+    /// one block by index.
+    pub fn blocks(&self) -> Vec<Block> {
+        let body_text = self.body().to_string();
+        let segments: Vec<&str> = body_text.split('\n').collect();
+        let kinds_list = self.blocks_list();
+        segments
+            .iter()
+            .enumerate()
+            .map(|(idx, seg)| Block {
+                kind: match kinds_list.get(idx) {
+                    Some(ValueOrContainer::Value(LoroValue::String(s))) => str_to_kind(s.as_ref()),
+                    _ => BlockKind::Paragraph,
+                },
+                text: (*seg).to_owned(),
+            })
+            .collect()
+    }
 }
 
 /// Encode a `BlockKind` as the canonical `LoroMovableList` string.

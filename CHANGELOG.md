@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 4 prompt 4.1 — `layout` crate refactored to the canonical
+  Phase 4.1 surface. New free-fn `pub fn layout(doc: &Doc, viewport:
+  &Viewport) -> Result<RenderPlan, Error>` consumes the doc-model
+  CRDT (`apalabrar-doc-model::Doc`) and emits the blueprint Section G
+  `RenderPlan` shape (`pages` + `dirty_rects`; `glyph_runs` /
+  `selections` / `carets` deferred to 4.2 on `#[non_exhaustive]`).
+  The legacy Gate 5 surface (`Engine` / `Document` /
+  `LaidOutDocument`) is removed; cosmic-text + page-pack machinery
+  stay private. Internal optimisation: thread-local `ShapingCache`
+  reuses the `FontSystem` and per-block shaped lines across calls
+  (the public surface is stateless from the caller's perspective)
+  so re-laying out the same doc hits 100 % cache and only re-packs
+  pages. doc-model gains `Doc::blocks() -> Vec<Block>` — a bulk
+  projection that does the body-clone and `\n`-split exactly once
+  instead of per-block. 73 tests cover unit (41 api + 8 traits + 2
+  lib), integration via the doc-model CRDT (10), insta snapshots
+  (5), and proptest properties (7 × 256 random docs each =
+  page-count monotonicity per blueprint Section E R3, conservation,
+  permutation, determinism, dirty-rect cardinality, line-width
+  bounds, kind round-trip). Acceptance: 200-page doc layout p95 =
+  **4.36 ms** (11.5× under the 50 ms gate criterion). Coverage:
+  97.24 % region / 100 % function / 95.38 % line. Mutation kill:
+  50 / 55 viable = **90.91 %** (above the 90 % non-moat floor); the
+  5 survivors are 3 cache-overflow-timing equivalents on line 177
+  and 2 float-EPSILON perturbations on `pack_pages` line 417 (same
+  documented equivalents as Gate 5 stage 1).
 - Initial repository skeleton — Cargo workspace (11 crates), pnpm workspace
   (4 packages), Turborepo task graph, lefthook pre-commit hooks, Conventional
   Commits gate.
