@@ -10,6 +10,7 @@ description = "HTML import + export (controlled subset on save)."
 
 [dependencies]
 html5ever.workspace = true
+markup5ever_rcdom.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

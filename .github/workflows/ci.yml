@@ -126,6 +126,12 @@ jobs:
           cargo test --release -p apalabrar-format-md \
             --test round_trip --test spec \
             2>&1 | tee corpus-roundtrip-md.log
+      - name: format-html — element + sanitization + round-trip
+        id: html
+        run: |
+          cargo test --release -p apalabrar-format-html \
+            --test spec \
+            2>&1 | tee corpus-roundtrip-html.log
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -139,7 +145,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const logs = ['corpus-roundtrip-docx.log', 'corpus-roundtrip-md.log']
+            const logs = ['corpus-roundtrip-docx.log', 'corpus-roundtrip-md.log', 'corpus-roundtrip-html.log']
               .map(p => {
                 try { return `### \`${p}\`\n\n\`\`\`\n${fs.readFileSync(p, 'utf8').slice(-8000)}\n\`\`\``; }
                 catch { return ''; }

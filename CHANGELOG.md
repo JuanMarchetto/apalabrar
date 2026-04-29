@@ -28,6 +28,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 3 prompt 3.5 — `format-html` HTML read/write under TDD discipline.
+  Adds `pub fn read_html(s) -> Result<DocModel, Error>` + `pub fn write_html(doc)
+  -> Result<String, Error>`. Same `BlockKind` taxonomy as format-md
+  (Paragraph, Heading 1-6, List, BlockQuote, CodeBlock, Table,
+  ThematicBreak). Unlike format-md/format-docx the original source is
+  NOT held verbatim — the entire point of `write_html` is the
+  controlled subset emission, so pasted noise (scripts, styles, classes,
+  inline event handlers, data-* attributes) is dropped by construction.
+  Parser uses html5ever 0.29 + markup5ever_rcdom 0.5.0-unofficial:
+  `parse_document` builds an RcDom; `find_body` descends to `<body>`;
+  per body child, `classify_top_level` maps element local name to a
+  `BlockKind` and `collect_text` recursively concatenates text nodes
+  while skipping `<script>` / `<style>` subtrees (mirroring browser
+  `Element.textContent`). Writer emits a minimal allow-list of tags
+  (`h1`-`h6`, `p`, `ul`/`li`, `blockquote`, `pre`, `table`/`tr`/`td`,
+  `hr`) with HTML-escaped text content. 47 new tests covering element
+  classification, sanitization (script/style/class/style/data-*
+  stripping), HTML-special-char escape on save, multibyte (LATAM, CJK),
+  edge cases (empty, whitespace-only, OOB indices), 16-fixture
+  round-trip on paragraph_count + block_kind + paragraph_text, and 3
+  proptest properties (256 cases each) on never-panic, index
+  resolution, and editable-surface preservation. Also extends the
+  Phase 3.4 corpus-roundtrip CI gate to include the format-html spec
+  test.
 - Phase 3 prompt 3.4 — `corpus-roundtrip` CI gate. New PR-blocking job
   in `.github/workflows/ci.yml` runs the OOXML round-trip + insta
   snapshot + `read_preserve` / `write_preserve` tests for `format-docx`
