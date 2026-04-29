@@ -15,6 +15,7 @@ rustybuzz.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+apalabrar-format-docx.workspace = true
 insta.workspace = true
 proptest.workspace = true
 serde = { workspace = true, features = ["derive"] }

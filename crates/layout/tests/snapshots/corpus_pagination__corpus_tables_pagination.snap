@@ -1,0 +1,39 @@
+---
+source: crates/layout/tests/corpus_pagination.rs
+assertion_line: 136
+expression: summary
+---
+category: tables
+fixtures:
+  - name: merged-cells
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 25
+          first_block_index: 0
+          last_block_index: 24
+  - name: multi-row-header
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 32
+          first_block_index: 0
+          last_block_index: 31
+  - name: numeric-data
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 21
+          first_block_index: 0
+          last_block_index: 20
+  - name: simple-table
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 11
+          first_block_index: 0
+          last_block_index: 10

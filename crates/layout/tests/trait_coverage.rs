@@ -73,6 +73,7 @@ fn block_box_traits() {
             height_px: 18.0,
             baseline_y_px: 14.0,
         }],
+        line_range: 0..1,
     };
     let cloned = bbox.clone();
     assert_eq!(bbox, cloned);

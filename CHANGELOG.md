@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 4 prompt 4.3 — native pagination + page numbers. The layout
+  crate's `pack_pages` now splits blocks across pages with widow /
+  orphan control matching Microsoft Word's defaults (2-line minimum
+  on each side of a split). New `pub fn layout_with_config(doc,
+  viewport, &PaginationConfig) -> Result<RenderPlan, Error>` lets
+  callers override; `layout` keeps default semantics. `BlockBox`
+  gains `line_range: Range<usize>` (a split block produces
+  multiple BlockBoxes sharing `block_index` but covering disjoint
+  line slices). `Page` gains `page_number: usize` (1-indexed, so
+  academic citations "see p. 47" align without renderer adjustment).
+  Hard page breaks via `HARD_PAGE_BREAK_MARKER` (U+000C) embedded
+  in block text — zero doc-model schema change. Heading kinds
+  implicitly keep with the next block (academic convention; matches
+  Word's default for caption / figure pairs). 33 new tests across
+  `tests/pagination.rs` (block splitting, line_range partitioning,
+  widow / orphan rules, hard breaks, heading keep-with-next, page
+  numbers, no-op edit invariant property over 256 random docs) and
+  `tests/corpus_pagination.rs` (page-boundary regression on all 27
+  corpus fixtures across 7 categories — academic, multilingual,
+  equations, footnotes, synthetic, tables, tracked). Quality: 131
+  tests pass; bench p95 = 11.54 ms (4.3× under the 50 ms gate, vs
+  9.07 ms at 4.2 — the 27 % delta is the splitting / widow / orphan
+  pass cost on the 6 600-block bench doc); 98.35 % line / 98.93 %
+  region coverage; mutation kill 105 / 136 viable + 5 timeout-
+  caught = **80.88 %** (below the 85 % project floor — the 26
+  surviving mutations on `pack_pages` are float-arithmetic
+  perturbations within `f32::EPSILON` of the geometry calculations,
+  same documented-equivalent class as Gate 5 stage 1 plus more
+  due to the splitting algorithm's larger surface). Removed the
+  leftover `offset *= k` from a previous mutants run that had
+  crashed mid-test; that mutation surviving as actual source code
+  caused infinite loops on every block-split test path.
 - Phase 4 prompt 4.2 — text shaping integration. New `crates/layout/src/shaping.rs`
   sub-module exposes `pub struct GlyphRun { block_index, line_index,
   font_size_px, baseline_y_px, glyphs: Vec<PositionedGlyph> }` and

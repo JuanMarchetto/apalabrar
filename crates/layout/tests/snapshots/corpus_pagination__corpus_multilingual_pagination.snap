@@ -1,0 +1,39 @@
+---
+source: crates/layout/tests/corpus_pagination.rs
+assertion_line: 132
+expression: summary
+---
+category: multilingual
+fixtures:
+  - name: french-german
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 5
+          first_block_index: 0
+          last_block_index: 4
+  - name: mixed-script
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 9
+          first_block_index: 0
+          last_block_index: 8
+  - name: portuguese
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 3
+          first_block_index: 0
+          last_block_index: 2
+  - name: spanish-tildes
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 7
+          first_block_index: 0
+          last_block_index: 6

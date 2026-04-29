@@ -27,6 +27,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 
@@ -112,23 +113,76 @@ pub struct Line {
     pub baseline_y_px: f32,
 }
 
-/// One block placed on a page.
+/// One placement of a block (or part of a block) on a page. A block
+/// that doesn't fit on a single page produces multiple `BlockBox`es —
+/// one per page-segment — sharing the same `block_index` but each
+/// covering a disjoint slice of the block's lines via [`line_range`].
+///
+/// [`line_range`]: Self::line_range
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockBox {
+    /// Index of the source block in the doc.
     pub block_index: usize,
     pub kind: BlockKind,
     pub origin_x_px: f32,
     pub origin_y_px: f32,
     pub width_px: f32,
     pub height_px: f32,
+    /// The shaped lines that fall on this page. For a block that fits
+    /// on a single page, `lines.len() == cached_block_lines.len()` and
+    /// `line_range == 0..lines.len()`. For a block split across pages,
+    /// each segment carries the slice of lines that landed on its
+    /// page; the renderer should treat the segments as one logical
+    /// block with disjoint visual halves.
     pub lines: Vec<Line>,
+    /// Index range into the BLOCK's full shaped line list — i.e. the
+    /// indices into the `Vec<Line>` `shape_uncached` produced. The
+    /// first split-segment has `line_range.start == 0`; the last
+    /// split-segment has `line_range.end == total_lines`. For a
+    /// non-split block the range is `0..total_lines`.
+    pub line_range: Range<usize>,
 }
 
 /// One page of laid-out blocks.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Page {
     pub blocks: Vec<BlockBox>,
+    /// 1-indexed page number. The first page in a `RenderPlan` is 1,
+    /// not 0 — academic citations ("see p. 47") use 1-indexed page
+    /// numbers, so the renderer never has to adjust.
+    pub page_number: usize,
 }
+
+/// Pagination rules. Defaults match Microsoft Word's standard
+/// widow / orphan control (2 lines minimum on each side of a split).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaginationConfig {
+    /// Minimum number of lines that must remain on the FIRST page
+    /// when a block splits — fewer is an "orphan" (a small head of a
+    /// block stranded on a page). Splitting is suppressed if the
+    /// proposed split would leave fewer.
+    pub min_orphan_lines: usize,
+    /// Minimum number of lines that must move to the SECOND page when
+    /// a block splits — fewer is a "widow" (a small tail of a block
+    /// stranded on the next page).
+    pub min_widow_lines: usize,
+}
+
+impl Default for PaginationConfig {
+    fn default() -> Self {
+        Self {
+            min_orphan_lines: 2,
+            min_widow_lines: 2,
+        }
+    }
+}
+
+/// Hard page break marker. A block whose `text` starts with this
+/// codepoint forces the packer to flush the current page and start
+/// the block on a fresh one. `U+000C FORM FEED` is the historic
+/// page-break codepoint and is essentially never typed by an
+/// academic user, so the false-positive risk is negligible.
+pub const HARD_PAGE_BREAK_MARKER: char = '\u{000C}';
 
 /// Output of [`layout`]. Phase 4.1 filled `pages` and `dirty_rects`;
 /// Phase 4.2 adds `glyph_runs` (one entry per shaped line). Future
@@ -154,8 +208,21 @@ impl RenderPlan {
     }
 }
 
-/// Lay out `doc` against `viewport` and return a [`RenderPlan`].
+/// Lay out `doc` against `viewport` with default pagination rules.
+/// Equivalent to [`layout_with_config`] passing
+/// [`PaginationConfig::default`].
 pub fn layout(doc: &apalabrar_doc_model::Doc, viewport: &Viewport) -> Result<RenderPlan, Error> {
+    layout_with_config(doc, viewport, &PaginationConfig::default())
+}
+
+/// Lay out `doc` against `viewport` with the supplied pagination
+/// rules. The free-fn entry point for callers that want to override
+/// widow / orphan thresholds.
+pub fn layout_with_config(
+    doc: &apalabrar_doc_model::Doc,
+    viewport: &Viewport,
+    config: &PaginationConfig,
+) -> Result<RenderPlan, Error> {
     let cw = viewport.content_width();
     let ch = viewport.content_height();
     if cw <= 0.0 || ch <= 0.0 {
@@ -210,15 +277,19 @@ pub fn layout(doc: &apalabrar_doc_model::Doc, viewport: &Viewport) -> Result<Ren
                     glyphs: line_glyphs.clone(),
                 });
             }
+            let hard_break_before = block.text.starts_with(HARD_PAGE_BREAK_MARKER);
             shaped.push(ShapedBlock {
                 block_index: idx,
                 kind: cached.kind,
                 height_px: cached.height_px,
                 left_inset_px: cached.left_inset_px,
+                space_before_px: cached.space_before_px,
+                space_after_px: cached.space_after_px,
                 lines: cached.lines,
+                hard_break_before,
             });
         }
-        (pack_pages(&shaped, viewport), glyph_runs)
+        (pack_pages(&shaped, viewport, config), glyph_runs)
     });
 
     let dirty_rects: Vec<Rect> = pages
@@ -302,6 +373,14 @@ struct CachedShape {
     /// Font size used for every shaped line in this block. Phase 4.2
     /// emits one shape per block, so a single value covers all lines.
     font_size_px: f32,
+    /// Vertical inset before the block when whole and at the start of
+    /// a page. The packer applies this only to the FIRST segment of a
+    /// (possibly split) block.
+    space_before_px: f32,
+    /// Vertical inset after the block when complete. The packer
+    /// applies this only to the LAST segment of a (possibly split)
+    /// block.
+    space_after_px: f32,
     lines: Vec<Line>,
     /// One entry per shaped (cosmic-text-emitted) line, parallel to
     /// `lines`. Empty when the block has no shaped output (the
@@ -384,7 +463,13 @@ struct ShapedBlock {
     kind: BlockKind,
     height_px: f32,
     left_inset_px: f32,
+    space_before_px: f32,
+    space_after_px: f32,
     lines: Vec<Line>,
+    /// `true` if the source block's text begins with the hard-break
+    /// marker. The packer flushes the current page before placing
+    /// this block.
+    hard_break_before: bool,
 }
 
 /// Shape one block without touching the cache. Returns a [`CachedShape`]
@@ -434,6 +519,8 @@ fn shape_uncached(
         height_px,
         left_inset_px: m.left_inset_px,
         font_size_px: m.font_size_px,
+        space_before_px: m.space_before_px,
+        space_after_px: m.space_after_px,
         lines,
         line_glyphs,
     }
@@ -447,37 +534,217 @@ fn byte_to_codepoint(text: &str, byte_offset: usize) -> u32 {
     text[..clamped].chars().count() as u32
 }
 
-/// Greedy top-to-bottom page packing. A block taller than a single
-/// page lives alone on its own page so the result is never empty
-/// when blocks exist.
-fn pack_pages(shaped: &[ShapedBlock], viewport: &Viewport) -> Vec<Page> {
+/// Phase 4.3 packer. Walks the shaped blocks top-to-bottom, splits
+/// blocks across pages when necessary, and applies widow / orphan +
+/// keep-with-next + hard-break rules.
+///
+/// Algorithm sketch (per shaped block):
+///   1. If the block carries a hard-break-before marker, flush the
+///      current page (if non-empty) before placing it.
+///   2. If the block is a heading and the next block's first line
+///      would not fit on the current page after the heading, push
+///      the heading to the next page so it stays with its body
+///      (academic keep-with-next semantics for headings).
+///   3. Walk lines with an offset. For each iteration, compute how
+///      many lines fit in the remaining space; bump down to satisfy
+///      `min_widow_lines`; bail to a fresh page if `min_orphan_lines`
+///      would be violated. Continue until the block is fully placed,
+///      potentially across multiple pages.
+fn pack_pages(shaped: &[ShapedBlock], viewport: &Viewport, config: &PaginationConfig) -> Vec<Page> {
     let content_height = viewport.content_height();
     let mut pages: Vec<Page> = Vec::new();
-    let mut current = Page::default();
+    let mut current_blocks: Vec<BlockBox> = Vec::new();
+    let mut current_page_number: usize = 1;
     let mut y_cursor = 0.0_f32;
 
-    for sb in shaped {
-        let needs_new_page =
-            !current.blocks.is_empty() && y_cursor + sb.height_px > content_height + f32::EPSILON;
-        if needs_new_page {
-            pages.push(std::mem::take(&mut current));
-            y_cursor = 0.0;
+    let flush = |pages: &mut Vec<Page>,
+                 blocks: &mut Vec<BlockBox>,
+                 page_number: &mut usize,
+                 y_cursor: &mut f32| {
+        if !blocks.is_empty() {
+            pages.push(Page {
+                blocks: std::mem::take(blocks),
+                page_number: *page_number,
+            });
+            *page_number += 1;
+            *y_cursor = 0.0;
         }
-        current.blocks.push(BlockBox {
-            block_index: sb.block_index,
-            kind: sb.kind,
-            origin_x_px: sb.left_inset_px,
-            origin_y_px: y_cursor,
-            width_px: viewport.content_width() - sb.left_inset_px,
-            height_px: sb.height_px,
-            lines: sb.lines.clone(),
-        });
-        y_cursor += sb.height_px;
+    };
+
+    for (i, sb) in shaped.iter().enumerate() {
+        // Hard break: flush the current page before this block.
+        if sb.hard_break_before {
+            flush(
+                &mut pages,
+                &mut current_blocks,
+                &mut current_page_number,
+                &mut y_cursor,
+            );
+        }
+
+        // Heading keep-with-next: if the heading itself fits but the
+        // first line of the next block would NOT, push the heading to
+        // a fresh page so it's never orphaned at the bottom.
+        if matches!(sb.kind, BlockKind::Heading { .. })
+            && i + 1 < shaped.len()
+            && !current_blocks.is_empty()
+        {
+            let after_heading_y = y_cursor + sb.height_px;
+            let next = &shaped[i + 1];
+            let next_first_line_h = next.lines.first().map(|l| l.height_px).unwrap_or(0.0);
+            // Probe: heading fits, but the next block's first line + its
+            // space-before wouldn't fit on the remainder of the page.
+            let heading_fits = after_heading_y <= content_height + f32::EPSILON;
+            let next_first_line_fits = after_heading_y + next.space_before_px + next_first_line_h
+                <= content_height + f32::EPSILON;
+            if heading_fits && !next_first_line_fits {
+                flush(
+                    &mut pages,
+                    &mut current_blocks,
+                    &mut current_page_number,
+                    &mut y_cursor,
+                );
+            }
+        }
+
+        // Place the block (potentially splitting across pages).
+        let n = sb.lines.len();
+        let line_h = sb.lines.first().map(|l| l.height_px).unwrap_or(18.0);
+        let mut offset: usize = 0;
+        while offset < n {
+            let remaining = n - offset;
+            let space_before_for_segment = if offset == 0 { sb.space_before_px } else { 0.0 };
+            let space_left = content_height - y_cursor;
+
+            // How many lines fit in the remaining space (ignoring
+            // space_after for now since we don't yet know if this is
+            // the last segment).
+            let usable = (space_left - space_before_for_segment).max(0.0);
+            let max_fit = if line_h > 0.0 {
+                (usable / line_h).floor() as usize
+            } else {
+                remaining
+            };
+            let mut k = max_fit.min(remaining);
+
+            // If the WHOLE rest fits including space_after, place it.
+            let full_remainder_height =
+                remaining as f32 * line_h + space_before_for_segment + sb.space_after_px;
+            if full_remainder_height <= space_left + f32::EPSILON {
+                push_segment(
+                    &mut current_blocks,
+                    sb,
+                    viewport,
+                    y_cursor,
+                    offset..n,
+                    full_remainder_height,
+                );
+                y_cursor += full_remainder_height;
+                break;
+            }
+
+            // Otherwise we need to split. Apply widow/orphan rules.
+            let tail_after_split = remaining.saturating_sub(k);
+            if tail_after_split > 0
+                && tail_after_split < config.min_widow_lines
+                && k >= config.min_widow_lines
+            {
+                k = remaining - config.min_widow_lines;
+            }
+
+            // Orphan check on the head of THIS segment when this is
+            // the first segment of the block. For mid-block splits
+            // (offset > 0) the orphan rule does not re-apply — the
+            // block already started on a previous page.
+            let head_too_small_for_orphan = offset == 0 && k < config.min_orphan_lines;
+
+            if k == 0 || head_too_small_for_orphan {
+                // Push the whole rest to a fresh page.
+                if current_blocks.is_empty() {
+                    // Page is already empty — block is taller than a
+                    // full page. Force the maximum split here.
+                    if max_fit == 0 {
+                        // Even one line doesn't fit (line_h > content_height).
+                        // Ship a single line and move on.
+                        k = 1;
+                    } else {
+                        k = max_fit.min(remaining);
+                    }
+                    let segment_height = k as f32 * line_h + space_before_for_segment;
+                    push_segment(
+                        &mut current_blocks,
+                        sb,
+                        viewport,
+                        y_cursor,
+                        offset..offset + k,
+                        segment_height,
+                    );
+                    offset += k;
+                    flush(
+                        &mut pages,
+                        &mut current_blocks,
+                        &mut current_page_number,
+                        &mut y_cursor,
+                    );
+                } else {
+                    flush(
+                        &mut pages,
+                        &mut current_blocks,
+                        &mut current_page_number,
+                        &mut y_cursor,
+                    );
+                }
+                continue;
+            }
+
+            // Place a partial first/middle segment ending at line offset+k.
+            let segment_height = k as f32 * line_h + space_before_for_segment;
+            push_segment(
+                &mut current_blocks,
+                sb,
+                viewport,
+                y_cursor,
+                offset..offset + k,
+                segment_height,
+            );
+            offset += k;
+            flush(
+                &mut pages,
+                &mut current_blocks,
+                &mut current_page_number,
+                &mut y_cursor,
+            );
+        }
     }
-    if !current.blocks.is_empty() {
-        pages.push(current);
+
+    if !current_blocks.is_empty() {
+        pages.push(Page {
+            blocks: current_blocks,
+            page_number: current_page_number,
+        });
     }
     pages
+}
+
+fn push_segment(
+    current_blocks: &mut Vec<BlockBox>,
+    sb: &ShapedBlock,
+    viewport: &Viewport,
+    y_cursor: f32,
+    line_range: Range<usize>,
+    height_px: f32,
+) {
+    let lines_slice = sb.lines[line_range.clone()].to_vec();
+    current_blocks.push(BlockBox {
+        block_index: sb.block_index,
+        kind: sb.kind,
+        origin_x_px: sb.left_inset_px,
+        origin_y_px: y_cursor,
+        width_px: viewport.content_width() - sb.left_inset_px,
+        height_px,
+        lines: lines_slice,
+        line_range,
+    });
 }
 
 #[cfg(test)]
