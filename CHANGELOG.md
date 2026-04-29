@@ -11,6 +11,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 4 prompt 4.4 — Solid UI shell (toolbar + sidebars + modal +
+  styleguide). `@apalabrar/ui` ships seven controlled, presentational
+  components: `KobalteModal` (Dialog wrapper), `WordClassicToggle`
+  (segmented Modern/Classic switch — ribbon deferred to v1; toggle
+  exposed today so user preference persists across the upgrade),
+  `OutlinePane` (flat headings list with level-derived indent + active
+  highlight), `CommentsSidebar` (threads + inline reply form +
+  resolve/jump callbacks), `FindReplaceBar` (find/replace + match
+  counter + case-sensitive / whole-word toggles; regex deferred per
+  Phase 4.5 plan), `FloatingSelectionToolbar` (absolute-positioned
+  bubble; bold/italic/underline + link + comment), `GDocsToolbar`
+  (the composite top toolbar — undo/redo, paragraph style, font
+  family/size, inline formatting, alignment, list, link/comment, and
+  the embedded WordClassicToggle). All seven are fully prop-driven —
+  parents own command dispatch — so editor wiring drops in cleanly
+  in later phases. New `/styleguide` route in `@apalabrar/app`
+  renders every component against sample data with a theme switcher
+  (light / dark / high-contrast); used by Playwright as the visual-
+  regression + a11y test surface. Tailwind 4 wired with
+  `@custom-variant dark (.dark, .dark *)` so the styleguide can drive
+  all three themes from a class toggle. **85 vitest unit tests**
+  (100 % statement / function / line coverage on all 7 components;
+  99.47 % branch). **12 Playwright tests** (3 × 7 = 21 visual-
+  regression baselines per component-theme pair, 3 axe-core a11y
+  scans with zero serious / critical violations on every theme, 6
+  interaction tests for kobalte semantics that happy-dom can't fully
+  exercise). A11y wins flushed out by axe and applied back to the
+  components: `aria-level` removed from `<button>` (not ARIA-spec-
+  legal — replaced with `data-level` + visual indent); resolved-
+  thread visual treatment switched from `opacity-60` to tint + left
+  border (opacity knocked text contrast below 4.5 : 1); muted text
+  neutrals bumped to `neutral-600/700` from `500` for the same
+  reason. Solid + happy-dom workaround documented: two adjacent
+  `<select>` elements crash the Solid renderer with
+  `Cannot read properties of null (reading 'nextSibling')`; fix is
+  wrapping each in `<span class="contents">` so they're not direct
+  siblings (affects `GDocsToolbar`'s paragraph-style / font-family /
+  font-size triple). Dev note: `vitest run` for `@apalabrar/app` now
+  needs `test.server.deps.inline: true` because kobalte and the
+  solid-* primitive packages ship raw `.jsx` files that must run
+  through `vite-plugin-solid`.
 - Phase 4 prompt 4.3 — native pagination + page numbers. The layout
   crate's `pack_pages` now splits blocks across pages with widow /
   orphan control matching Microsoft Word's defaults (2-line minimum
