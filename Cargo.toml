@@ -52,7 +52,7 @@ html5ever = "0.29"
 markup5ever_rcdom = "0.5.0-unofficial"
 pulldown-cmark = "0.12"
 quick-xml = "0.36"
-zip = "0.6"
+zip = "7.2"
 
 # Citation — citeproc-rs is not yet published to crates.io; the citation crate
 # will pull it in via git source when the engine is implemented (Prompt 2.x).
