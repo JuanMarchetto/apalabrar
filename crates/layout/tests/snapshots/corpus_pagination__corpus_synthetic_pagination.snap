@@ -1,0 +1,15 @@
+---
+source: crates/layout/tests/corpus_pagination.rs
+assertion_line: 135
+expression: summary
+---
+category: synthetic
+fixtures:
+  - name: empty-self-closing-paragraph
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 2
+          first_block_index: 0
+          last_block_index: 1

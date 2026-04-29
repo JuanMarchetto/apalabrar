@@ -1,0 +1,39 @@
+---
+source: crates/layout/tests/corpus_pagination.rs
+assertion_line: 133
+expression: summary
+---
+category: equations
+fixtures:
+  - name: display-math
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 6
+          first_block_index: 0
+          last_block_index: 5
+  - name: greek-symbols
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 7
+          first_block_index: 0
+          last_block_index: 6
+  - name: inline-formulae
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 9
+          first_block_index: 0
+          last_block_index: 8
+  - name: mixed-text
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 3
+          first_block_index: 0
+          last_block_index: 2

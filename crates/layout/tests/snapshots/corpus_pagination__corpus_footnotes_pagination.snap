@@ -1,0 +1,39 @@
+---
+source: crates/layout/tests/corpus_pagination.rs
+assertion_line: 134
+expression: summary
+---
+category: footnotes
+fixtures:
+  - name: cross-paragraph-footnotes
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 3
+          first_block_index: 0
+          last_block_index: 2
+  - name: footnote-with-formatting
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 1
+          first_block_index: 0
+          last_block_index: 0
+  - name: multiple-footnotes
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 2
+          first_block_index: 0
+          last_block_index: 1
+  - name: single-footnote
+    summary:
+      page_count: 1
+      pages:
+        - page_number: 1
+          block_count: 1
+          first_block_index: 0
+          last_block_index: 0
