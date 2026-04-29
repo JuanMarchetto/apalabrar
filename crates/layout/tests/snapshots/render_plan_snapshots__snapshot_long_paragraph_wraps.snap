@@ -1,0 +1,15 @@
+---
+source: crates/layout/tests/render_plan_snapshots.rs
+assertion_line: 113
+expression: summarize(&plan)
+---
+page_count: 1
+block_box_count: 1
+dirty_rect_count: 1
+blocks:
+  - page_index: 0
+    block_index: 0
+    kind: Paragraph
+    line_count: 13
+    height_px_round: 242
+    origin_x_px_round: 0

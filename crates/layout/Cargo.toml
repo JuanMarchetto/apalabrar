@@ -9,26 +9,20 @@ rust-version.workspace = true
 description = "Layout engine — paged layout, line breaking, text shaping (rustybuzz + cosmic-text)."
 
 [dependencies]
+apalabrar-doc-model.workspace = true
 cosmic-text.workspace = true
 rustybuzz.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-criterion.workspace = true
 insta.workspace = true
 proptest.workspace = true
 serde = { workspace = true, features = ["derive"] }
 
+# `render_plan_p95` is the Phase 4.1 acceptance bench: 200-page doc,
+# `layout(doc, vp)` p95 over 1 000 calls, gate 50 ms. Non-Criterion
+# binary; prints p50/p95/p99 and exits non-zero if p95 > budget.
 [[bench]]
-name = "layout_bench"
-harness = false
-required-features = []
-
-# `keystroke_p95` is a non-Criterion bench: it is a binary that prints
-# p50/p95/p99 of `relayout_after_change` over 1 000 individual calls and
-# exits non-zero if p95 exceeds the gate budget. Run with
-# `cargo bench -p apalabrar-layout --bench keystroke_p95`.
-[[bench]]
-name = "keystroke_p95"
+name = "render_plan_p95"
 harness = false
 required-features = []

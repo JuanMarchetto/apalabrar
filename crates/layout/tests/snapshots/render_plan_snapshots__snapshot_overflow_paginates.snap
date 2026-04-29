@@ -1,8 +1,11 @@
 ---
-source: crates/layout/tests/snapshots.rs
-expression: summarize(&result)
+source: crates/layout/tests/render_plan_snapshots.rs
+assertion_line: 89
+expression: summarize(&plan)
 ---
 page_count: 2
+block_box_count: 40
+dirty_rect_count: 2
 blocks:
   - page_index: 0
     block_index: 0
