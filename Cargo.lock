@@ -104,7 +104,7 @@ dependencies = [
  "insta",
  "proptest",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -114,7 +114,7 @@ dependencies = [
  "insta",
  "proptest",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -126,7 +126,7 @@ dependencies = [
  "loro",
  "proptest",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -146,7 +146,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "wasm-bindgen",
  "wasm-bindgen-test",
 ]
@@ -160,7 +160,7 @@ dependencies = [
  "proptest",
  "quick-xml 0.36.2",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "zip",
 ]
 
@@ -172,7 +172,7 @@ dependencies = [
  "insta",
  "markup5ever_rcdom",
  "proptest",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -183,7 +183,7 @@ dependencies = [
  "insta",
  "proptest",
  "pulldown-cmark",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -193,7 +193,7 @@ dependencies = [
  "insta",
  "proptest",
  "quick-xml 0.36.2",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -202,7 +202,7 @@ version = "0.0.0"
 dependencies = [
  "insta",
  "proptest",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -216,7 +216,7 @@ dependencies = [
  "proptest",
  "rustybuzz 0.20.1",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -226,7 +226,7 @@ dependencies = [
  "insta",
  "proptest",
  "serde",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
