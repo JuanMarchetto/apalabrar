@@ -41,7 +41,7 @@ A test that always passes is worse than no test. We validate correctness via:
 - **Differential testing** against reference implementations (Yjs for CRDT, citeproc-js for
   citations, MS Word for OOXML).
 - **PR review checklist** (below).
-- **AI-assisted audit** — see `.claude/prompts/audit-tests.md`.
+- **Self-audit checklist** for vacuous tests, missing edge cases, and assertion completeness.
 
 ### Rule 5 — Coverage 100% is the guideline; mutation kill rate is the floor
 
@@ -78,21 +78,6 @@ A PR is incomplete if its tests are weak, regardless of whether the feature "wor
 5. POLISH    Refactor with safety net. Run mutation. Add tests for survivors.
              Update CHANGELOG. PR with coverage diff + mutation report.
 ```
-
----
-
-## Working with Claude (or any LLM pair-programmer)
-
-Claude has a known weakness: it tends to write tests **and** implementation in the same response. To
-enforce the rhythm, use the templates in `.claude/prompts/`:
-
-- `test-first.md` — generate failing tests for a new module
-- `audit-tests.md` — find vacuous tests in an existing file
-- `implement-step.md` — write minimum code to flip ONE test RED→GREEN
-- `refactor-mutation.md` — kill surviving mutations after GREEN
-
-Always ask the LLM to **write tests first** in a separate turn from the implementation. If it slips,
-throw away the implementation and start over.
 
 ---
 
