@@ -103,7 +103,7 @@ apalabrar/
 │
 ├── tests-corpus/          OOXML golden corpus (100 → 500 docs)
 ├── tests-e2e/             Playwright multi-browser suite
-├── .github/workflows/     CI / nightly / release
+└── .github/workflows/     CI / nightly / release
 ```
 
 ---

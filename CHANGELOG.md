@@ -146,6 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coverage gate, bundle budget, mutation diff, accessibility, license audit.
 - Nightly pipeline — full mutation, multi-browser E2E, full corpus,
   performance benchmarks, dependency audit.
+- TDD prompt templates for the 5-step rhythm (test-first, audit-tests, implement-step, refactor-mutation) live outside the repo as a local contributor toolkit.
 - ATTRIBUTION.md, CONTRIBUTING.md (with Founder Discipline Pact),
   CODE_OF_CONDUCT.md (Contributor Covenant 2.1), SECURITY.md.
 - Validation Gate 1 (LATAM dead-key composition):
