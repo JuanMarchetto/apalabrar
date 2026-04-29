@@ -51,7 +51,7 @@ docx-rs = "0.4"
 html5ever = "0.29"
 markup5ever_rcdom = "0.5.0-unofficial"
 pulldown-cmark = "0.12"
-quick-xml = "0.36"
+quick-xml = "0.38"
 zip = "0.6"
 
 # Citation — citeproc-rs is not yet published to crates.io; the citation crate
