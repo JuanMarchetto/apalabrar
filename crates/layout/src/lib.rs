@@ -30,6 +30,10 @@ use std::collections::HashMap;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 
+pub mod shaping;
+
+pub use shaping::{GlyphRun, PositionedGlyph};
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Bundled DejaVu Sans regular face. Single-font corpus keeps shaping
@@ -126,14 +130,15 @@ pub struct Page {
     pub blocks: Vec<BlockBox>,
 }
 
-/// Output of [`layout`]. Phase 4.1 fills `pages` and `dirty_rects`;
-/// Phase 4.2 adds `glyph_runs`, `selections`, `carets` on top of
-/// `#[non_exhaustive]`.
+/// Output of [`layout`]. Phase 4.1 filled `pages` and `dirty_rects`;
+/// Phase 4.2 adds `glyph_runs` (one entry per shaped line). Future
+/// phases add `selections` and `carets` on top of `#[non_exhaustive]`.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderPlan {
     pub pages: Vec<Page>,
     pub dirty_rects: Vec<Rect>,
+    pub glyph_runs: Vec<GlyphRun>,
 }
 
 impl RenderPlan {
@@ -172,12 +177,13 @@ pub fn layout(doc: &apalabrar_doc_model::Doc, viewport: &Viewport) -> Result<Ren
     // keys are content-addressable on (viewport content width, kind, text)
     // so re-laying out the same document hits the cache 100 % and only the
     // page-pack runs (≈ms instead of ≈hundreds of ms cold).
-    let pages = SHAPING_CACHE.with(|cell| {
+    let (pages, glyph_runs) = SHAPING_CACHE.with(|cell| {
         let mut cache = cell.borrow_mut();
         if cache.shapes.len() > SHAPING_CACHE_CAPACITY {
             cache.shapes.clear();
         }
         let mut shaped: Vec<ShapedBlock> = Vec::with_capacity(blocks.len());
+        let mut glyph_runs: Vec<GlyphRun> = Vec::new();
         for (idx, block) in blocks.iter().enumerate() {
             let key = CacheKey::new(cw_round, &block.kind, &block.text);
             let cached = match cache.shapes.get(&key) {
@@ -189,6 +195,21 @@ pub fn layout(doc: &apalabrar_doc_model::Doc, viewport: &Viewport) -> Result<Ren
                     s
                 }
             };
+            // Emit one GlyphRun per shaped non-empty line. Empty
+            // line_glyphs are the synthetic placeholder for empty
+            // paragraphs; the renderer has nothing to paint there.
+            for (line_idx, line_glyphs) in cached.line_glyphs.iter().enumerate() {
+                if line_glyphs.is_empty() {
+                    continue;
+                }
+                glyph_runs.push(GlyphRun {
+                    block_index: idx,
+                    line_index: line_idx,
+                    font_size_px: cached.font_size_px,
+                    baseline_y_px: cached.lines[line_idx].baseline_y_px,
+                    glyphs: line_glyphs.clone(),
+                });
+            }
             shaped.push(ShapedBlock {
                 block_index: idx,
                 kind: cached.kind,
@@ -197,7 +218,7 @@ pub fn layout(doc: &apalabrar_doc_model::Doc, viewport: &Viewport) -> Result<Ren
                 lines: cached.lines,
             });
         }
-        pack_pages(&shaped, viewport)
+        (pack_pages(&shaped, viewport), glyph_runs)
     });
 
     let dirty_rects: Vec<Rect> = pages
@@ -210,7 +231,11 @@ pub fn layout(doc: &apalabrar_doc_model::Doc, viewport: &Viewport) -> Result<Ren
         })
         .collect();
 
-    Ok(RenderPlan { pages, dirty_rects })
+    Ok(RenderPlan {
+        pages,
+        dirty_rects,
+        glyph_runs,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -274,7 +299,14 @@ struct CachedShape {
     kind: BlockKind,
     height_px: f32,
     left_inset_px: f32,
+    /// Font size used for every shaped line in this block. Phase 4.2
+    /// emits one shape per block, so a single value covers all lines.
+    font_size_px: f32,
     lines: Vec<Line>,
+    /// One entry per shaped (cosmic-text-emitted) line, parallel to
+    /// `lines`. Empty when the block has no shaped output (the
+    /// synthetic placeholder line for empty paragraphs).
+    line_glyphs: Vec<Vec<PositionedGlyph>>,
 }
 
 fn build_font_system() -> FontSystem {
@@ -374,6 +406,7 @@ fn shape_uncached(
     buffer.shape_until_scroll(font_system, false);
 
     let mut lines: Vec<Line> = Vec::new();
+    let mut line_glyphs: Vec<Vec<PositionedGlyph>> = Vec::new();
     let mut sum_line_heights = 0.0;
     for run in buffer.layout_runs() {
         lines.push(Line {
@@ -381,24 +414,37 @@ fn shape_uncached(
             height_px: run.line_height,
             baseline_y_px: run.line_y,
         });
+        let mut glyphs: Vec<PositionedGlyph> = Vec::with_capacity(run.glyphs.len());
+        for g in run.glyphs.iter() {
+            glyphs.push(PositionedGlyph {
+                glyph_id: g.glyph_id,
+                cluster_start: byte_to_codepoint(text, g.start),
+                cluster_end: byte_to_codepoint(text, g.end),
+                x_px: g.x,
+                y_px: g.y,
+                width_px: g.w,
+            });
+        }
+        line_glyphs.push(glyphs);
         sum_line_heights += run.line_height;
-    }
-    if lines.is_empty() {
-        // Empty text still occupies one line height so the block is visible.
-        lines.push(Line {
-            width_px: 0.0,
-            height_px: m.line_height_px,
-            baseline_y_px: m.line_height_px,
-        });
-        sum_line_heights = m.line_height_px;
     }
     let height_px = sum_line_heights + m.space_before_px + m.space_after_px;
     CachedShape {
         kind,
         height_px,
         left_inset_px: m.left_inset_px,
+        font_size_px: m.font_size_px,
         lines,
+        line_glyphs,
     }
+}
+
+/// Convert a byte offset within `text` to the corresponding codepoint
+/// (char) offset. Byte offsets that fall in the middle of a multi-byte
+/// character or past the end clamp to the nearest valid boundary.
+fn byte_to_codepoint(text: &str, byte_offset: usize) -> u32 {
+    let clamped = byte_offset.min(text.len());
+    text[..clamped].chars().count() as u32
 }
 
 /// Greedy top-to-bottom page packing. A block taller than a single
