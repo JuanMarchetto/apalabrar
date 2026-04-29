@@ -28,6 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   controlled-input pattern; route at `/composer` mounts the editor; 21 vitest
   tests (15 dead-key spec + 5 ComposingEditor wiring + 1 fast-check property
   invariant) and 10 Playwright tests across Chromium/Firefox/WebKit.
+- Phase 3 prompt 3.4 — `corpus-roundtrip` CI gate. New PR-blocking job
+  in `.github/workflows/ci.yml` runs the OOXML round-trip + insta
+  snapshot + `read_preserve` / `write_preserve` tests for `format-docx`
+  AND the round-trip + spec tests for `format-md` as a single focused
+  signal. `INSTA_OUTPUT=diff` + `INSTA_UPDATE=no` ensure any drifted
+  snapshot fails the test with a unified diff in the log. On PR
+  failure, the job uploads the per-crate test logs as artifacts and
+  posts a comment carrying the last 8 KB of each log + a recipe to
+  reproduce locally and (only after manual review) `cargo insta
+  accept` the change. 161 tests run under this gate (112 from
+  format-docx + 49 from format-md). Verifying that a deliberately
+  corrupted fixture trips the gate is left as a manual recipe in the
+  Phase 3.4 memory note — making a real broken-on-purpose PR is the
+  only honest end-to-end test.
 - Phase 3 prompt 3.3 — `format-md` Markdown read/write under TDD discipline.
   Adds `pub fn read_md(s) -> Result<DocModel, Error>` + `pub fn write_md(doc)
   -> Result<String, Error>`. The structural model classifies top-level

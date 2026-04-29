@@ -98,6 +98,67 @@ jobs:
       - uses: taiki-e/install-action@cargo-mutants
       - run: cargo mutants --in-diff origin/main..HEAD --error 1 --no-shuffle
 
+  # Focused corpus round-trip gate (Phase 3.4). Mirrors what `rust-test`
+  # does for the workspace, but isolates the OOXML + Markdown round-trip
+  # + insta snapshot suites so a fixture or parser regression has its
+  # own clearly-attributable PR signal. INSTA_OUTPUT=diff makes the test
+  # log carry a unified diff for every drifted snapshot, which the
+  # snapshot-drift step downstream extracts into a PR comment.
+  corpus-roundtrip:
+    runs-on: ubuntu-latest
+    env:
+      INSTA_OUTPUT: diff
+      INSTA_UPDATE: "no"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: format-docx — round-trip + snapshots + read/write preserve
+        id: docx
+        run: |
+          cargo test --release -p apalabrar-format-docx \
+            --test round_trip --test snapshots \
+            --test read_preserve --test write_preserve \
+            2>&1 | tee corpus-roundtrip-docx.log
+      - name: format-md — round-trip + spec
+        id: md
+        run: |
+          cargo test --release -p apalabrar-format-md \
+            --test round_trip --test spec \
+            2>&1 | tee corpus-roundtrip-md.log
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-roundtrip-logs
+          path: corpus-roundtrip-*.log
+          retention-days: 7
+      - name: Post snapshot drift comment on PR failure
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const logs = ['corpus-roundtrip-docx.log', 'corpus-roundtrip-md.log']
+              .map(p => {
+                try { return `### \`${p}\`\n\n\`\`\`\n${fs.readFileSync(p, 'utf8').slice(-8000)}\n\`\`\``; }
+                catch { return ''; }
+              })
+              .filter(Boolean)
+              .join('\n\n');
+            const body = `## Corpus round-trip failed\n\nThe \`corpus-roundtrip\` gate is PR-blocking. ` +
+              `Last 8 KB of each test log:\n\n${logs}\n\n` +
+              `_Re-running locally:_ \`cargo test --release -p apalabrar-format-docx --test round_trip\` ` +
+              `(or the matching format-md command). If a snapshot legitimately changed, run ` +
+              `\`cargo insta review\` from the affected crate, **manually inspect** the diff, then ` +
+              `\`cargo insta accept\`. Never accept a snapshot you didn't read.`;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
   bundle-budget:
     runs-on: ubuntu-latest
     steps:
