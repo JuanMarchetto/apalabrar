@@ -36,6 +36,15 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
+    server: {
+      deps: {
+        // Solid + kobalte + their transitive primitives ship raw .jsx in
+        // dist and must run through vite-plugin-solid to compile, not
+        // through node's bare resolution. Inline everything to avoid
+        // chasing the transitive list.
+        inline: true,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
