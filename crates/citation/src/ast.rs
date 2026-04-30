@@ -24,6 +24,15 @@ pub struct Style {
     pub id: String,
     pub class: StyleClass,
     pub default_locale: Option<String>,
+    /// `<style initialize-with="…">` — global default for `<name>`
+    /// elements that don't set their own. APA / MLA put it here.
+    pub initialize_with: Option<String>,
+    /// `<style names-delimiter="…">`.
+    pub names_delimiter: Option<String>,
+    /// `<style demote-non-dropping-particle="…">`.
+    pub demote_non_dropping_particle: Option<String>,
+    /// `<style page-range-format="…">`.
+    pub page_range_format: Option<String>,
     pub citation: Citation,
     pub bibliography: Option<Bibliography>,
     pub macros: BTreeMap<String, Vec<Element>>,
@@ -82,6 +91,7 @@ pub struct Bibliography {
     pub subsequent_author_substitute_rule: Option<String>,
     pub et_al_min: Option<u32>,
     pub et_al_use_first: Option<u32>,
+    pub et_al_use_last: bool,
     pub names_delimiter: Option<String>,
     pub name_delimiter: Option<String>,
 }

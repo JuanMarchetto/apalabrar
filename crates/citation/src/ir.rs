@@ -100,10 +100,31 @@ impl Token {
 /// Walk the IR and emit a single string via the supplied output
 /// format. Empty groups (and fail-if-empty children) are skipped;
 /// delimiters appear only between non-empty children.
+///
+/// Applies CSL punctuation-collapse post-processing: adjacent
+/// terminal punctuation (`. .`, `,.`, `?.`) collapses to a single
+/// terminator. citeproc-js + citeproc-rs both do this; without it,
+/// `initialize-with=". "` colliding with a `delimiter=". "` produces
+/// double-period output.
 pub fn serialize<F: OutputFormat>(tokens: &[Token], format: &F) -> String {
     let mut out = String::new();
     serialize_into(tokens, format, &mut out);
-    out
+    collapse_punctuation(&out)
+}
+
+fn collapse_punctuation(s: &str) -> String {
+    // Order matters: collapse the longer patterns first so a triple-
+    // period collapses cleanly.
+    s.replace(".. ", ". ")
+        .replace("..\n", ".\n")
+        .replace(",.", ".")
+        .replace(",,", ",")
+        .replace("?.", "?")
+        .replace("!.", "!")
+        // Trim a trailing "..".
+        .trim_end_matches('.')
+        .to_string()
+        + if s.ends_with('.') { "." } else { "" }
 }
 
 fn serialize_into<F: OutputFormat>(tokens: &[Token], format: &F, out: &mut String) {

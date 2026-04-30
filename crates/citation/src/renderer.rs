@@ -21,6 +21,22 @@ use crate::{CslItem, DateVar, NameVar};
 /// catching cycles.
 pub const MAX_MACRO_DEPTH: usize = 32;
 
+/// Variables added by the citeproc layer (not by the user) that
+/// should NOT count toward `<group>` fail-if-empty checks. When such
+/// a variable is the only one called in a group and it's empty
+/// (disambiguation didn't fire), the group must still render.
+fn is_synthetic_variable(name: &str) -> bool {
+    matches!(
+        name,
+        "year-suffix"
+            | "citation-number"
+            | "citation-label"
+            | "first-reference-note-number"
+            | "locator"
+            | "label"
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Render context
 // ─────────────────────────────────────────────────────────────────
@@ -36,6 +52,9 @@ pub struct RenderContext<'a> {
     pub position: usize,
     /// Current macro expansion depth.
     pub macro_depth: usize,
+    /// `true` when rendering the bibliography layout (et-al + name
+    /// thresholds come from `<bibliography>` instead of `<citation>`).
+    pub is_bibliography: bool,
     /// Stack of `(variables_attempted, variables_rendered)` counts —
     /// one entry per open `<group>`. CSL group fail-if-empty is
     /// determined by VARIABLE call results: a group is suppressed
@@ -111,8 +130,29 @@ pub fn render_element(ctx: &mut RenderContext, elem: &Element) -> Vec<Token> {
 fn render_text(ctx: &mut RenderContext, text: &TextElement) -> Vec<Token> {
     let raw: Option<String> = match &text.source {
         TextSource::Variable(name) => {
-            let v = resolve_variable(ctx, name);
-            ctx.track_variable(v.is_some());
+            // `form="short"` on a `<text variable="container-title"/>`
+            // (or "title") asks the renderer to prefer the *-short
+            // variant if available, falling back to the long form.
+            let v = if text.form.as_deref() == Some("short") {
+                let short_name = match name.as_str() {
+                    "container-title" => Some("container-title-short"),
+                    "title" => Some("title-short"),
+                    _ => None,
+                };
+                short_name
+                    .and_then(|n| resolve_variable(ctx, n))
+                    .or_else(|| resolve_variable(ctx, name))
+            } else {
+                resolve_variable(ctx, name)
+            };
+            // Synthetic variables (set by disambiguation / clustering)
+            // don't count toward fail-if-empty: a group with
+            // `<text variable="year-suffix"/>` as its only var must
+            // still render when the year-suffix is empty (which is
+            // the common case — disambiguation rarely fires).
+            if !is_synthetic_variable(name) {
+                ctx.track_variable(v.is_some());
+            }
             v
         }
         TextSource::Macro(name) => return render_macro(ctx, name, text),
@@ -147,6 +187,11 @@ fn render_macro(ctx: &mut RenderContext, name: &str, text: &TextElement) -> Vec<
         return Vec::new();
     };
     ctx.macro_depth += 1;
+    // Macro expansion does NOT isolate variable tracking — variable
+    // calls inside the expanded body bubble to the calling group's
+    // scope so a group that uses macros for its variable rendering
+    // still triggers fail-if-empty correctly. (Choose is the
+    // boundary; macro is just a textual substitution.)
     let mut tokens = render_elements(ctx, &body);
     ctx.macro_depth -= 1;
     if tokens.iter().all(Token::is_empty) {
@@ -209,29 +254,30 @@ fn render_group(ctx: &mut RenderContext, group: &GroupElement) -> Vec<Token> {
     ctx.group_scopes.push((0, 0));
     let children = render_elements(ctx, &group.body);
     let (attempted, rendered) = ctx.group_scopes.pop().unwrap_or((0, 0));
-    // CSL group fail-if-empty: when at least one variable was called
-    // and ALL variable calls returned empty, the entire group is
-    // suppressed — including any term / value / delimiter / affix
-    // children that did render. (CSL 1.0.2 §4.6).
+    // CSL group fail-if-empty (§4.6): suppress when at least one
+    // variable was called (directly or via a macro) and ALL variable
+    // calls returned empty. Variables inside `<choose>` are isolated
+    // — choose has its own scope so its evaluations don't taint the
+    // surrounding group.
     if attempted > 0 && rendered == 0 {
-        // Bubble up: this nested group counts as one variable-attempt
-        // failure for the parent group.
+        // Bubble: this nested group counts as one var-attempt failure
+        // for the enclosing group.
         if let Some(parent) = ctx.group_scopes.last_mut() {
             parent.0 += 1;
         }
         return Vec::new();
     }
-    // Successful (or var-free) group bubbles up as a "rendered"
-    // variable call so a parent group with this as its only variable-
-    // bearing child is not erroneously suppressed.
+    if children.iter().all(Token::is_empty) {
+        return Vec::new();
+    }
+    // Successful (or var-free) group with content bubbles up as a
+    // rendered var attempt — keeps the parent group from being
+    // erroneously suppressed when this is its only var-bearing child.
     if attempted > 0
         && let Some(parent) = ctx.group_scopes.last_mut()
     {
         parent.0 += 1;
         parent.1 += 1;
-    }
-    if children.iter().all(Token::is_empty) {
-        return Vec::new();
     }
     vec![Token::Group {
         children,
@@ -248,6 +294,12 @@ fn render_group(ctx: &mut RenderContext, group: &GroupElement) -> Vec<Token> {
 // ─────────────────────────────────────────────────────────────────
 
 fn render_choose(ctx: &mut RenderContext, choose: &ChooseElement) -> Vec<Token> {
+    // Choose does NOT isolate variable tracking from the surrounding
+    // group: variable calls inside the chosen branch propagate to the
+    // enclosing group, so a group whose only variable-rendering child
+    // sits inside a `<choose>` is correctly suppressed when that
+    // variable fails. Synthetic variables (year-suffix etc.) are
+    // skipped to avoid spurious suppression in the n.d. fallback path.
     for branch in &choose.branches {
         if evaluate_conditions(ctx, &branch.conditions) {
             return render_elements(ctx, &branch.body);
@@ -378,16 +430,16 @@ fn render_one_names_var(
 ) -> Vec<Token> {
     let name = names.name.as_ref();
     let total = people.len();
-    let (et_al_min, et_al_use_first) =
-        et_al_thresholds(name, names.formatting.clone(), &ctx.style.citation);
+    let (et_al_min, et_al_use_first, et_al_use_last) = et_al_thresholds(name, ctx);
     let (visible_count, use_et_al) = match (et_al_min, et_al_use_first) {
         (Some(min), Some(first)) if total as u32 >= min => (first as usize, true),
         _ => (total, false),
     };
+    let style_init = ctx.style.initialize_with.as_deref();
     let formatted_names: Vec<String> = people
         .iter()
         .take(visible_count)
-        .map(|n| format_one_name(name, n))
+        .map(|n| format_one_name(name, n, style_init))
         .collect();
     let connector_and = name.and_then(|n| n.and).unwrap_or(NameAnd::Text);
     let inter_delim = name
@@ -413,15 +465,30 @@ fn render_one_names_var(
         joined.push_str(fn_str);
     }
     if use_et_al {
-        let et_al_term = names
-            .et_al
-            .as_ref()
-            .and_then(|e| e.term.clone())
-            .unwrap_or_else(|| "et-al".into());
-        let et_al_text = resolve_term(ctx, &et_al_term, TermForm::Long, false)
-            .unwrap_or_else(|| "et al.".into());
-        joined.push_str(&inter_delim);
-        joined.push_str(&et_al_text);
+        if et_al_use_last && total > visible_count {
+            // CSL et-al-use-last: render first N + ", … " + last name.
+            // Used by APA bib for 21+ author papers (first 19 + last).
+            joined.push_str(&inter_delim);
+            joined.push('…');
+            joined.push_str(&inter_delim);
+            if let Some(last_one) = people.last() {
+                joined.push_str(&format_one_name(
+                    name,
+                    last_one,
+                    ctx.style.initialize_with.as_deref(),
+                ));
+            }
+        } else {
+            let et_al_term = names
+                .et_al
+                .as_ref()
+                .and_then(|e| e.term.clone())
+                .unwrap_or_else(|| "et-al".into());
+            let et_al_text = resolve_term(ctx, &et_al_term, TermForm::Long, false)
+                .unwrap_or_else(|| "et al.".into());
+            joined.push_str(&inter_delim);
+            joined.push_str(&et_al_text);
+        }
     }
     let _ = var; // silence unused — future-use for var-specific formatting
     vec![Token::Text {
@@ -430,19 +497,34 @@ fn render_one_names_var(
     }]
 }
 
+/// Compute the effective `(et_al_min, et_al_use_first, et_al_use_last)`
+/// triple for a names element. Precedence: name attrs override the
+/// citation/bibliography defaults; bibliography attrs win when
+/// rendering the bibliography layout.
 fn et_al_thresholds(
     name: Option<&NameElement>,
-    _names_fmt: Formatting,
-    citation: &Citation,
-) -> (Option<u32>, Option<u32>) {
-    let from_name = name.and_then(|n| n.et_al_min).or(citation.et_al_min);
-    let from_use_first = name
-        .and_then(|n| n.et_al_use_first)
-        .or(citation.et_al_use_first);
-    (from_name, from_use_first)
+    ctx: &RenderContext,
+) -> (Option<u32>, Option<u32>, bool) {
+    let bib = ctx.style.bibliography.as_ref();
+    let cit = &ctx.style.citation;
+    let (default_min, default_first, default_last) = if ctx.is_bibliography
+        && let Some(b) = bib
+    {
+        (b.et_al_min, b.et_al_use_first, b.et_al_use_last)
+    } else {
+        (cit.et_al_min, cit.et_al_use_first, cit.et_al_use_last)
+    };
+    let from_min = name.and_then(|n| n.et_al_min).or(default_min);
+    let from_first = name.and_then(|n| n.et_al_use_first).or(default_first);
+    let from_last = name.map(|n| n.et_al_use_last).unwrap_or(false) || default_last;
+    (from_min, from_first, from_last)
 }
 
-fn format_one_name(name: Option<&NameElement>, n: &NameVar) -> String {
+fn format_one_name(
+    name: Option<&NameElement>,
+    n: &NameVar,
+    style_initialize_with: Option<&str>,
+) -> String {
     if let Some(literal) = &n.literal {
         return literal.clone();
     }
@@ -456,17 +538,17 @@ fn format_one_name(name: Option<&NameElement>, n: &NameVar) -> String {
         return format!("{particle} {family}");
     }
     let given_full = n.given.as_deref().unwrap_or("");
-    let initialize = name
-        .and_then(|nm| nm.initialize_with.clone())
-        .or_else(|| name.map(|_| "".to_string()));
-    let given_out = if let Some(initialize_with) = &initialize {
-        if !initialize_with.is_empty() {
-            initialize_given_name(given_full, initialize_with)
-        } else {
-            given_full.to_string()
-        }
-    } else {
-        given_full.to_string()
+    // Effective initialize-with: explicit name attr wins over the
+    // style root default, which wins over "no initialization".
+    // `<name initialize="false">` disables initialization regardless
+    // of inherited initialize-with.
+    let allow_init = name.map(|nm| nm.initialize).unwrap_or(true);
+    let init_with = name
+        .and_then(|nm| nm.initialize_with.as_deref())
+        .or(style_initialize_with);
+    let given_out = match init_with {
+        Some(iw) if allow_init && !iw.is_empty() => initialize_given_name(given_full, iw),
+        _ => given_full.to_string(),
     };
     let sort_separator = name
         .and_then(|nm| nm.sort_separator.clone())
@@ -765,7 +847,10 @@ fn label_is_plural(item: &CslItem, var: &str, plural_attr: Option<&str>) -> bool
 pub fn resolve_variable(ctx: &RenderContext, name: &str) -> Option<String> {
     let raw: Option<String> = match name {
         "title" => ctx.item.title.clone(),
-        "title-short" => ctx.item.title.clone(), // Most styles fall back to title.
+        // CslItem doesn't carry a separate `title_short` field today;
+        // a future schema bump may add it. For now resolve to None
+        // and let the caller fall back via form="short" handling.
+        "title-short" => None,
         "container-title" => ctx.item.container_title.clone(),
         "container-title-short" => ctx.item.container_title_short.clone(),
         "publisher" => ctx.item.publisher.clone(),

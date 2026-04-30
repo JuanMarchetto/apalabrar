@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 175
+expression: bib
+---
+Doe, Jane. <i>The History of Writing</i>. Academic Press, 2019.

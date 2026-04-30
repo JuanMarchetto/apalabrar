@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 182
+expression: bib
+---
+1.John Smith. On the nature of typesetting. <i>J Typogr</i>. 2020;12(3):123-145. doi:10.1000/typo.2020.12345

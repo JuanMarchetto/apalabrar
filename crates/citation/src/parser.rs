@@ -91,6 +91,10 @@ fn parse_style_inner(
         _ => StyleClass::InText,
     };
     let default_locale = attr(start, "default-locale");
+    let initialize_with = attr(start, "initialize-with");
+    let names_delimiter = attr(start, "names-delimiter");
+    let demote_non_dropping_particle = attr(start, "demote-non-dropping-particle");
+    let page_range_format = attr(start, "page-range-format");
     let mut citation = Citation::default();
     let mut bibliography: Option<Bibliography> = None;
     let mut macros: BTreeMap<String, Vec<Element>> = BTreeMap::new();
@@ -134,6 +138,10 @@ fn parse_style_inner(
         id: id.to_string(),
         class,
         default_locale,
+        initialize_with,
+        names_delimiter,
+        demote_non_dropping_particle,
+        page_range_format,
         citation,
         bibliography,
         macros,
@@ -195,6 +203,7 @@ fn parse_bibliography(
         subsequent_author_substitute_rule: attr(start, "subsequent-author-substitute-rule"),
         et_al_min: u32_attr(start, "et-al-min"),
         et_al_use_first: u32_attr(start, "et-al-use-first"),
+        et_al_use_last: bool_attr(start, "et-al-use-last"),
         names_delimiter: attr(start, "names-delimiter"),
         name_delimiter: attr(start, "name-delimiter"),
         ..Bibliography::default()

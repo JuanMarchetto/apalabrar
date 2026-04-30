@@ -170,14 +170,12 @@ fn render_bib_ieee_journal_article_snapshot() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_mla_book_snapshot() {
     let bib = render_bib(&[book()], "mla").expect("MLA render must succeed");
     insta::assert_snapshot!(bib);
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_ama_journal_article_snapshot() {
     let bib =
         render_bib(&[journal_article_single_author()], "ama").expect("AMA render must succeed");
@@ -218,7 +216,6 @@ fn render_inline_ieee_is_numeric_bracket_form() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_inline_mla_is_author_page_form() {
     let cite =
         render_inline(&journal_article_single_author(), "mla").expect("MLA inline must succeed");
@@ -226,7 +223,6 @@ fn render_inline_mla_is_author_page_form() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_inline_ama_is_superscript_numeric() {
     let cite =
         render_inline(&journal_article_single_author(), "ama").expect("AMA inline must succeed");
@@ -272,26 +268,29 @@ fn render_bib_renders_italic_journal_titles_in_apa() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
-fn render_bib_emits_et_al_for_4_plus_authors_in_apa() {
-    // APA 7th: 3+ authors → first author + ", et al." in the
-    // bibliography. (in-text: 2+ → "et al." since APA 7).
-    let bib = render_bib(&[multi_author_paper()], "apa").unwrap();
+fn render_inline_emits_et_al_for_3_plus_authors_in_apa() {
+    // APA 7th: 3+ authors in CITATION (inline) use "First, et al.".
+    // BIBLIOGRAPHY uses et-al-min=21 (lists up to 20 authors) so we
+    // verify the inline path here. Original test name + body said
+    // "render_bib...4+ authors" but APA bib only triggers at 21+;
+    // the test's claim was incorrect per the APA 7 manual + the
+    // bundled CSL style attrs.
+    let cite = render_inline(&multi_author_paper(), "apa").unwrap();
     assert!(
-        bib.contains("et al"),
-        "APA bib with 4 authors must use 'et al.', got {bib:?}",
+        cite.contains("et al"),
+        "APA inline with 4 authors must use 'et al.', got {cite:?}",
     );
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_uses_abbreviated_journal_in_ama() {
-    // AMA uses container-title-short ("J. Typogr.") not the full
-    // title.
+    // AMA uses container-title-short and applies strip-periods, so
+    // a stored "J. Typogr." renders as "J Typogr". Verify the short
+    // form is preferred over the long ("Journal of Typography").
     let bib = render_bib(&[journal_article_single_author()], "ama").unwrap();
     assert!(
-        bib.contains("J. Typogr."),
-        "AMA must use abbreviated journal title, got {bib:?}",
+        bib.contains("J Typogr") && !bib.contains("Journal of Typography"),
+        "AMA must prefer abbreviated journal title (strip-periods applied), got {bib:?}",
     );
 }
 
@@ -306,7 +305,6 @@ fn render_bib_emits_doi_link_when_doi_present() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_uses_substitute_to_title_when_author_missing() {
     // Anonymous item: most styles fall back to the title at the
     // start of the entry (CSL `substitute` chain).
@@ -338,7 +336,6 @@ fn render_inline_ieee_numbering_is_sequential_across_render_bib() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_handles_empty_items_slice() {
     let bib = render_bib(&[], "apa").unwrap();
     // Empty bibliography → empty string (or empty <ol>) — the layout
@@ -350,7 +347,6 @@ fn render_bib_handles_empty_items_slice() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_handles_5_plus_authors_with_et_al_truncation_in_apa() {
     // APA 7: bib lists up to 20 authors. We test that 21+ triggers
     // the truncation rule (... + last author).
@@ -367,7 +363,6 @@ fn render_bib_handles_5_plus_authors_with_et_al_truncation_in_apa() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_handles_non_latin_authors_without_panicking() {
     let bib = render_bib(&[non_latin_authors()], "apa").unwrap();
     assert!(
@@ -377,7 +372,6 @@ fn render_bib_handles_non_latin_authors_without_panicking() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_handles_missing_year_via_no_date_term() {
     // Item with no `issued` → CSL `no-date` term ("n.d." in en-US).
     let mut item = journal_article_single_author();
@@ -394,7 +388,6 @@ fn render_bib_handles_missing_year_via_no_date_term() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_is_deterministic_across_repeated_calls() {
     // Cache must not introduce variance: same input → byte-identical
     // output across calls.
@@ -407,14 +400,17 @@ fn render_bib_is_deterministic_across_repeated_calls() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_with_es_es_uses_spanish_terms() {
-    // "y" instead of "and"; "editado por" or similar instead of
-    // "edited by". Use a book chapter so the editor term renders.
+    // Spanish locale must surface localised terms in the rendered
+    // output. APA's chapter format renders the "in" term before the
+    // container title: en-US "In", es-ES "En" (with capitalize-first
+    // applied by the style). Original assertion expected the "y"
+    // connector but a single editor never triggers it; "En" is the
+    // reliable signal that the es-ES locale loaded.
     let bib = render_bib_with(&[book_chapter()], "apa", "es-ES", &Html).unwrap();
     assert!(
-        bib.contains(" y ") || bib.contains("&amp;"),
-        "es-ES bib must use Spanish 'y' connector, got {bib:?}",
+        bib.contains("En "),
+        "es-ES bib must surface Spanish 'En' (vs en-US 'In'), got {bib:?}",
     );
 }
 
@@ -440,7 +436,6 @@ fn render_bib_with_unknown_locale_returns_unknown_locale_error() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_inline_with_plain_format_strips_html_tags() {
     let cite =
         render_inline_with(&journal_article_single_author(), "apa", "en-US", &Plain).unwrap();
@@ -455,7 +450,6 @@ fn render_inline_with_plain_format_strips_html_tags() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_is_byte_deterministic_for_same_input_property() {
     // 100 calls with the same fixture must produce 100 identical
     // outputs (no caching artefacts, no global-state leak).

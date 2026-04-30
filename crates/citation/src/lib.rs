@@ -316,6 +316,7 @@ pub fn render_bib_with<F: OutputFormat>(
             item,
             position: idx + 1,
             macro_depth: 0,
+            is_bibliography: true,
             group_scopes: Vec::new(),
         };
         let tokens = renderer::render_layout(&mut ctx, layout);
@@ -339,6 +340,7 @@ pub fn render_inline_with<F: OutputFormat>(
         item,
         position: 1,
         macro_depth: 0,
+        is_bibliography: false,
         group_scopes: Vec::new(),
     };
     let tokens = renderer::render_layout(&mut ctx, &parsed_style.citation.layout);

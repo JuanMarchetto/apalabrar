@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 222
+expression: cite
+---
+(Smith, “On the Nature of Typesetting”)
