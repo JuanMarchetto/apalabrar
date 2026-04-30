@@ -65,3 +65,14 @@ world apalabrar-plugin {
     import cite;
     export plugin;
 }
+
+/// Minimal world for the word-counter reference plugin.
+/// Only `doc.read` (to read the document) and `ui.register-panel`
+/// (to surface the count) are needed. Plugins should declare the
+/// smallest world they need so users can grant the smallest set
+/// of capabilities.
+world word-counter {
+    import doc;
+    import ui;
+    export plugin;
+}

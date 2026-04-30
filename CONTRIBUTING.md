@@ -181,6 +181,20 @@ Pre-commit hooks (`lefthook`) enforce all of this locally.
 
 ---
 
+## Building a plugin
+
+Apalabrar is plugin-extensible. Plugins are **WASM Components** that import a small set of host
+functions (read the doc, register a UI panel, fetch over HTTP, render citations) and export a `run`
+entry point. The host sandboxes them with capability grants and resource quotas.
+
+The five-minute mental model and a ~30-minute walkthrough that ends with a working word counter are
+in [**docs/plugins/getting-started.md**](docs/plugins/getting-started.md). The reference plugin
+source is at [`examples/plugin-word-counter/`](examples/plugin-word-counter); a production-shaped
+plugin (Zotero / BetterBibTeX importer) is at [`examples/plugin-zotero/`](examples/plugin-zotero) —
+it uses every capability the host exposes and serves as the SDK end-to-end test.
+
+---
+
 ## Reporting bugs
 
 Open an issue using the `bug` template. Include:

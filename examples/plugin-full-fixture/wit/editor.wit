@@ -65,3 +65,14 @@ world apalabrar-plugin {
     import cite;
     export plugin;
 }
+
+/// Test fixture world: 4 of 5 capabilities (no cite). Used by
+/// `crates/plugin-host` to drive coverage of the doc-write and
+/// net.http import branches.
+world full-fixture {
+    import doc;
+    import doc-mut;
+    import ui;
+    import net;
+    export plugin;
+}

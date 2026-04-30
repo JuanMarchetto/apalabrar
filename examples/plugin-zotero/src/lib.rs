@@ -218,7 +218,7 @@ pub fn rpc_url_for(key: &str) -> String {
 #[cfg(target_arch = "wasm32")]
 mod guest {
     wit_bindgen::generate!({
-        world: "apalabrar-plugin",
+        world: "zotero-plugin",
         path: "wit/",
         generate_all,
     });

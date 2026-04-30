@@ -11,6 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 5.5 — reference plugin docs + minimal plugin worlds. New
+  [`docs/plugins/getting-started.md`](docs/plugins/getting-started.md)
+  walks through building a word-counter plugin from zero to a
+  working `.wasm` Component in ~30 minutes, covering the WIT
+  contract, `wit-bindgen`, `wasm-tools component new`, the
+  manifest/grants/quota model, and the host load + run dance.
+  Linked from `CONTRIBUTING.md` so new contributors find it.
+  Each existing plugin (`plugin-word-counter`, `plugin-full-fixture`,
+  `plugin-zotero`) now declares its **own** WIT world that
+  imports only the capabilities it actually uses — `word-counter`
+  asks for two, `full-fixture` four, `zotero-plugin` five — so
+  rebuilt fixtures honour least-privilege at the link level.
+  Component fixtures rebuilt accordingly; all 24
+  host_integration + 8 word-counter E2E + 6 full-fixture E2E + 6
+  zotero E2E tests still green.
+
 - Phase 5.4 — Zotero plugin (v0 hero feature). `examples/plugin-zotero`
   is the first marketplace-style plugin: it imports CSL-JSON from
   Zotero's BetterBibTeX local RPC, replaces `[[zot:KEY]]` markers

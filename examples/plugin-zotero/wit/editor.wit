@@ -65,3 +65,16 @@ world apalabrar-plugin {
     import cite;
     export plugin;
 }
+
+/// Zotero plugin world: needs all five capabilities. Cite is
+/// used to render bibliographies in the active CSL style; doc /
+/// doc-mut to read markers and write the result; net to fetch
+/// CSL-JSON from BetterBibTeX RPC; ui to surface progress.
+world zotero-plugin {
+    import doc;
+    import doc-mut;
+    import ui;
+    import net;
+    import cite;
+    export plugin;
+}

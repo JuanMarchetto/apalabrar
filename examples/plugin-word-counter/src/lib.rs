@@ -11,7 +11,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 wit_bindgen::generate!({
-    world: "apalabrar-plugin",
+    world: "word-counter",
     path: "wit/",
     generate_all,
 });
