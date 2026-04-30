@@ -31,7 +31,8 @@
 /// (eg. `fi` → single glyph) keeps a cluster range that spans the
 /// composed codepoints; a decomposition (one combining mark
 /// becoming two glyphs) emits two glyphs that share a cluster.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PositionedGlyph {
     /// Font-specific glyph index. Always non-zero for shaped text;
     /// zero is the `.notdef` slot, which cosmic-text only emits
@@ -56,7 +57,8 @@ pub struct PositionedGlyph {
 /// rich-text mark boundaries (which would split a line into
 /// multiple runs by font / weight / color) land in a later phase
 /// once the doc-model carries per-character marks for layout.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GlyphRun {
     /// Block index in the doc — matches
     /// [`crate::BlockBox::block_index`].

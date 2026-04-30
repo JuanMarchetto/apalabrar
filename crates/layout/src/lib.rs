@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
+use serde::Serialize;
 
 pub mod shaping;
 
@@ -66,7 +67,8 @@ pub enum Error {
 
 /// Page geometry (logical pixels). Origin is the top-left of the
 /// printable area (inside the margin).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Viewport {
     pub page_width_px: f32,
     pub page_height_px: f32,
@@ -85,7 +87,8 @@ impl Viewport {
 
 /// Axis-aligned rectangle in viewport pixels. Origin is top-left of
 /// the page's printable area.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Rect {
     pub x_px: f32,
     pub y_px: f32,
@@ -97,7 +100,8 @@ pub struct Rect {
 /// the renderer (heading level, list indent). Mirrors the doc-model's
 /// `BlockKind` shape; we keep it as a layout-local `Copy` enum so
 /// downstream `.iter().map(|b| b.kind)` patterns work without clones.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "type")]
 pub enum BlockKind {
     Paragraph,
     Heading { level: u8 },
@@ -106,7 +110,8 @@ pub enum BlockKind {
 
 /// One rendered line inside a block. Coordinates are relative to the
 /// block's origin.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Line {
     pub width_px: f32,
     pub height_px: f32,
@@ -119,7 +124,8 @@ pub struct Line {
 /// covering a disjoint slice of the block's lines via [`line_range`].
 ///
 /// [`line_range`]: Self::line_range
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BlockBox {
     /// Index of the source block in the doc.
     pub block_index: usize,
@@ -144,7 +150,8 @@ pub struct BlockBox {
 }
 
 /// One page of laid-out blocks.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Page {
     pub blocks: Vec<BlockBox>,
     /// 1-indexed page number. The first page in a `RenderPlan` is 1,
@@ -164,7 +171,8 @@ pub struct Page {
 /// Multiple `FootnoteBox`es per page when several markers land on
 /// the same page; a `FootnoteBox` with `is_continuation = true`
 /// represents the tail of a footnote that started on a previous page.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FootnoteBox {
     pub footnote_id: String,
     pub display_number: usize,
@@ -183,7 +191,8 @@ pub struct FootnoteBox {
 /// marker codepoint laid out inside a `BlockBox`. `display_number`
 /// is the 1-indexed position-order number that the JS renderer
 /// paints on top of the marker as a superscript.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FootnoteRef {
     pub footnote_id: String,
     pub display_number: usize,
@@ -235,7 +244,8 @@ pub const HARD_PAGE_BREAK_MARKER: char = '\u{000C}';
 /// adds `footnote_refs` (one per `\u{E001}` marker in body). Future
 /// phases add `selections` and `carets` on top of `#[non_exhaustive]`.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RenderPlan {
     pub pages: Vec<Page>,
     pub dirty_rects: Vec<Rect>,

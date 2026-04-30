@@ -12,6 +12,7 @@ export const bridgeSnapshot: (a: bigint) => [number, number, number, number];
 export const commentsInDoc: (a: bigint) => [number, number, number, number];
 export const findInDoc: (a: bigint, b: number, c: number, d: number, e: number) => [number, number, number, number];
 export const footnotesInDoc: (a: bigint) => [number, number, number, number];
+export const layoutDoc: (a: bigint, b: number, c: number) => [number, number, number, number];
 export const openDoc: (a: number, b: number, c: number, d: number) => [bigint, number, number];
 export const openDocx: (a: number, b: number) => [bigint, number, number];
 export const restoreFromSnapshot: (a: number, b: number) => [bigint, number, number];

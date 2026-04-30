@@ -30,6 +30,13 @@ export function findInDoc(doc_id: bigint, needle: string, opts_json: string): st
 export function footnotesInDoc(doc_id: bigint): string;
 
 /**
+ * Phase 5.7 — lay out the doc and return the resulting
+ * `RenderPlan` as a JSON string. `viewport_json` is a
+ * camelCase-keyed object: `{ pageWidthPx, pageHeightPx, marginPx }`.
+ */
+export function layoutDoc(doc_id: bigint, viewport_json: string): string;
+
+/**
  * Phase 5.6.2 — multi-format open. `format` is one of
  * `"docx"`, `"md"` (alias `"markdown"`), `"html"`, `"rtf"`,
  * `"odt"`. Unknown identifiers yield `Error::UnknownFormat`.
@@ -66,6 +73,7 @@ export interface InitOutput {
     readonly commentsInDoc: (a: bigint) => [number, number, number, number];
     readonly findInDoc: (a: bigint, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly footnotesInDoc: (a: bigint) => [number, number, number, number];
+    readonly layoutDoc: (a: bigint, b: number, c: number) => [number, number, number, number];
     readonly openDoc: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly openDocx: (a: number, b: number) => [bigint, number, number];
     readonly restoreFromSnapshot: (a: number, b: number) => [bigint, number, number];

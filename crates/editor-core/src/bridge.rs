@@ -203,6 +203,50 @@ pub fn footnotes_json(doc_id: DocId) -> Result<String, Error> {
     Ok(serialize_or_panic(&footnotes))
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Phase 5.7 — Layout bridge
+// ─────────────────────────────────────────────────────────────────
+
+/// JSON shape for a layout viewport on the wire. Matches the
+/// camelCase output of `apalabrar_layout::Viewport`'s `Serialize`
+/// impl so a single round-trip works without name munging.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewportJson {
+    pub page_width_px: f32,
+    pub page_height_px: f32,
+    pub margin_px: f32,
+}
+
+impl From<ViewportJson> for apalabrar_layout::Viewport {
+    fn from(j: ViewportJson) -> Self {
+        Self {
+            page_width_px: j.page_width_px,
+            page_height_px: j.page_height_px,
+            margin_px: j.margin_px,
+        }
+    }
+}
+
+/// Phase 5.7 — lay out the doc against the supplied viewport and
+/// return the resulting `RenderPlan` as a JSON string. The JS
+/// painter deserialises and renders it.
+pub fn layout_doc(doc_id: DocId, viewport_json: &str) -> Result<String, Error> {
+    let vp: ViewportJson =
+        serde_json::from_str(viewport_json).map_err(|e| Error::JsonParseFailed {
+            reason: e.to_string(),
+        })?;
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let plan =
+        apalabrar_layout::layout(&entry.doc, &vp.into()).map_err(|e| Error::LayoutFailed {
+            reason: e.to_string(),
+        })?;
+    Ok(serialize_or_panic(&plan))
+}
+
 /// All comment threads in the doc, JSON-encoded as a `Comment[]`.
 /// The shape matches the TypeScript `Comment` interface in
 /// `packages/editor-bridge/src/core.ts`. Threads are returned sorted
@@ -288,7 +332,7 @@ mod wasm_api {
 
     use crate::bridge::{
         apply_edit_op_json, block_at_json, block_count, comments_json, create_doc, find_json,
-        footnotes_json, restore_from_snapshot, snapshot, suggestions_json,
+        footnotes_json, layout_doc, restore_from_snapshot, snapshot, suggestions_json,
     };
     use crate::{DocId, Error, close_doc, doc_text};
 
@@ -354,5 +398,13 @@ mod wasm_api {
     #[wasm_bindgen(js_name = footnotesInDoc)]
     pub fn js_footnotes_in_doc(doc_id: u64) -> Result<String, JsValue> {
         footnotes_json(DocId(doc_id)).map_err(err)
+    }
+
+    /// Phase 5.7 — lay out the doc and return the resulting
+    /// `RenderPlan` as a JSON string. `viewport_json` is a
+    /// camelCase-keyed object: `{ pageWidthPx, pageHeightPx, marginPx }`.
+    #[wasm_bindgen(js_name = layoutDoc)]
+    pub fn js_layout_doc(doc_id: u64, viewport_json: &str) -> Result<String, JsValue> {
+        layout_doc(DocId(doc_id), viewport_json).map_err(err)
     }
 }

@@ -121,6 +121,12 @@ pub enum Error {
     /// internals.
     #[error("EditOp dispatch failed for {kind}: {reason}")]
     EditOpFailed { kind: String, reason: String },
+    /// Phase 5.7 — `apalabrar_layout::layout` rejected the input
+    /// (typically a viewport whose margins collapsed the content
+    /// area to zero). The string carries the layout crate's own
+    /// human-readable error so the JS painter can surface it.
+    #[error("layout failed: {reason}")]
+    LayoutFailed { reason: String },
 }
 
 // -----------------------------------------------------------------------------

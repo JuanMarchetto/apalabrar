@@ -59,6 +59,14 @@ class StubWasm implements ApalabrarCoreWasm {
   toFormat(): Uint8Array {
     return new Uint8Array();
   }
+  layoutDoc(): string {
+    return JSON.stringify({
+      pages: [],
+      dirtyRects: [],
+      glyphRuns: [],
+      footnoteRefs: [],
+    });
+  }
 }
 
 describe('editor-bridge runtime', () => {

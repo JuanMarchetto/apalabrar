@@ -162,6 +162,131 @@ export type CoreDocId = bigint & { readonly __brand: 'CoreDocId'; };
 export type DocFormat = 'docx' | 'markdown' | 'html' | 'rtf' | 'odt';
 
 // ─────────────────────────────────────────────────────────────────
+// Phase 5.7 — Layout types (mirror of `apalabrar_layout::RenderPlan`).
+// All field names are camelCase to match the Rust serde wire format.
+// ─────────────────────────────────────────────────────────────────
+
+/** Page geometry in logical pixels. The 96-DPI Letter default
+ *  matches the Rust constant `LETTER_AT_96DPI`. */
+export interface Viewport {
+  pageWidthPx: number;
+  pageHeightPx: number;
+  marginPx: number;
+}
+
+/** 96-DPI Letter (8.5" × 11") with 1" margins. The default the
+ *  app shell hands to `core.layout()` until the user picks a
+ *  different page size. */
+export const LETTER_AT_96DPI: Viewport = {
+  pageWidthPx: 816,
+  pageHeightPx: 1056,
+  marginPx: 96,
+};
+
+/** Axis-aligned rectangle in viewport pixels. Origin is top-left
+ *  of the page's printable area. */
+export interface LayoutRect {
+  xPx: number;
+  yPx: number;
+  widthPx: number;
+  heightPx: number;
+}
+
+/** Layout-side block kind. Mirrors `BlockKind` from the layout
+ *  crate; the doc-model has its own (compatible) enum. */
+export type LayoutBlockKind =
+  | { type: 'Paragraph'; }
+  | { type: 'Heading'; level: number; }
+  | { type: 'ListItem'; indent: number; };
+
+/** One rendered line. Coordinates are relative to the parent
+ *  block's origin. */
+export interface LayoutLine {
+  widthPx: number;
+  heightPx: number;
+  baselineYPx: number;
+}
+
+/** A `Range<usize>` from Rust serialises as `{ start, end }`. */
+export interface IndexRange {
+  start: number;
+  end: number;
+}
+
+/** One placement of a block on a page. A block split across pages
+ *  produces multiple `BlockBox`es with the same `blockIndex`. */
+export interface BlockBox {
+  blockIndex: number;
+  kind: LayoutBlockKind;
+  originXPx: number;
+  originYPx: number;
+  widthPx: number;
+  heightPx: number;
+  lines: LayoutLine[];
+  lineRange: IndexRange;
+}
+
+/** A footnote body shelf entry on a page. */
+export interface FootnoteBox {
+  footnoteId: string;
+  displayNumber: number;
+  originXPx: number;
+  originYPx: number;
+  widthPx: number;
+  heightPx: number;
+  lines: LayoutLine[];
+  isContinuation: boolean;
+}
+
+/** Body-side anchor for a footnote marker. */
+export interface FootnoteRef {
+  footnoteId: string;
+  displayNumber: number;
+  pageIndex: number;
+  blockIndex: number;
+  lineIndex: number;
+  xPx: number;
+  baselineYPx: number;
+}
+
+/** One page of laid-out blocks + footnote shelf. `pageNumber` is
+ *  1-indexed (academic citation convention). */
+export interface Page {
+  blocks: BlockBox[];
+  pageNumber: number;
+  footnotes: FootnoteBox[];
+}
+
+/** One shaped glyph in line-local coordinates. */
+export interface PositionedGlyph {
+  glyphId: number;
+  clusterStart: number;
+  clusterEnd: number;
+  xPx: number;
+  yPx: number;
+  widthPx: number;
+}
+
+/** One run of shaped glyphs sharing a single block + line + font
+ *  size. Phase 4.2 emits exactly one per shaped line. */
+export interface GlyphRun {
+  blockIndex: number;
+  lineIndex: number;
+  fontSizePx: number;
+  baselineYPx: number;
+  glyphs: PositionedGlyph[];
+}
+
+/** Output of `core.layout()`: the full RenderPlan the painter
+ *  consumes per doc revision. */
+export interface RenderPlan {
+  pages: Page[];
+  dirtyRects: LayoutRect[];
+  glyphRuns: GlyphRun[];
+  footnoteRefs: FootnoteRef[];
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Wasm module interface — the exports `apalabrar-editor-core` will
 // expose once the pkg is rebuilt with the Phase 2.3 bridge module.
 // Defined here as an interface so tests can supply a mock without
@@ -191,6 +316,9 @@ export interface ApalabrarCoreWasm {
   openDoc(bytes: Uint8Array, format: string): bigint;
   /** Phase 5.6.2 — symmetric multi-format save. */
   toFormat(docId: bigint, format: string): Uint8Array;
+  /** Phase 5.7 — lay out the doc against the given viewport.
+   *  Returns the `RenderPlan` as a JSON string the facade parses. */
+  layoutDoc(docId: bigint, viewportJson: string): string;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -322,5 +450,16 @@ export class ApalabrarCore {
    */
   toFormat(id: CoreDocId, format: DocFormat): Uint8Array {
     return this.wasm.toFormat(id, format === 'markdown' ? 'md' : format);
+  }
+
+  /**
+   * Phase 5.7 — lay out the doc against `viewport` and return the
+   * `RenderPlan` the painter consumes. The wasm side does the
+   * shaping + page packing in Rust; this method is a thin
+   * JSON crossing.
+   */
+  layout(id: CoreDocId, viewport: Viewport): RenderPlan {
+    const json = this.wasm.layoutDoc(id, JSON.stringify(viewport));
+    return JSON.parse(json) as RenderPlan;
   }
 }

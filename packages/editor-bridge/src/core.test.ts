@@ -8,7 +8,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { ApalabrarCore, type ApalabrarCoreWasm, type Block, type EditOp } from './core';
+import {
+  ApalabrarCore,
+  type ApalabrarCoreWasm,
+  type Block,
+  type EditOp,
+  LETTER_AT_96DPI,
+} from './core';
 
 interface CallLog {
   fn: string;
@@ -103,6 +109,17 @@ class WasmMock implements ApalabrarCoreWasm {
   toFormat(docId: bigint, format: string): Uint8Array {
     this.record('toFormat', [docId, format]);
     return this.toFormatResult;
+  }
+
+  layoutResultJson = JSON.stringify({
+    pages: [{ blocks: [], pageNumber: 1, footnotes: [] }],
+    dirtyRects: [],
+    glyphRuns: [],
+    footnoteRefs: [],
+  });
+  layoutDoc(docId: bigint, viewportJson: string): string {
+    this.record('layoutDoc', [docId, viewportJson]);
+    return this.layoutResultJson;
   }
 }
 
@@ -517,6 +534,66 @@ describe('ApalabrarCore', () => {
       core.toFormat(id, 'markdown');
       const call = wasm.log.find((c) => c.fn === 'toFormat');
       expect(call?.args[1]).toBe('md');
+    });
+  });
+
+  describe('layout (Phase 5.7)', () => {
+    it('serialises the viewport before crossing the wasm boundary', () => {
+      const wasm = new WasmMock();
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      core.layout(id, { pageWidthPx: 816, pageHeightPx: 1056, marginPx: 96 });
+      const call = wasm.log.find((c) => c.fn === 'layoutDoc');
+      expect(call?.args[0]).toBe(id);
+      expect(JSON.parse(call?.args[1] as string)).toEqual({
+        pageWidthPx: 816,
+        pageHeightPx: 1056,
+        marginPx: 96,
+      });
+    });
+
+    it('parses the wasm JSON into a typed RenderPlan', () => {
+      const wasm = new WasmMock();
+      wasm.layoutResultJson = JSON.stringify({
+        pages: [{
+          blocks: [{
+            blockIndex: 0,
+            kind: { type: 'Heading', level: 1 },
+            originXPx: 96,
+            originYPx: 96,
+            widthPx: 624,
+            heightPx: 32,
+            lines: [{ widthPx: 100, heightPx: 16, baselineYPx: 12 }],
+            lineRange: { start: 0, end: 1 },
+          }],
+          pageNumber: 1,
+          footnotes: [],
+        }],
+        dirtyRects: [],
+        glyphRuns: [{
+          blockIndex: 0,
+          lineIndex: 0,
+          fontSizePx: 16,
+          baselineYPx: 12,
+          glyphs: [],
+        }],
+        footnoteRefs: [],
+      });
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      const plan = core.layout(id, LETTER_AT_96DPI);
+      expect(plan.pages).toHaveLength(1);
+      expect(plan.pages[0]?.pageNumber).toBe(1);
+      expect(plan.pages[0]?.blocks[0]?.kind).toEqual({ type: 'Heading', level: 1 });
+      expect(plan.glyphRuns[0]?.fontSizePx).toBe(16);
+    });
+
+    it('returns the canonical 96-DPI Letter viewport from the exported constant', () => {
+      expect(LETTER_AT_96DPI).toEqual({
+        pageWidthPx: 816,
+        pageHeightPx: 1056,
+        marginPx: 96,
+      });
     });
   });
 

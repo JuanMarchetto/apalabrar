@@ -233,6 +233,35 @@ export function footnotesInDoc(doc_id) {
 }
 
 /**
+ * Phase 5.7 — lay out the doc and return the resulting
+ * `RenderPlan` as a JSON string. `viewport_json` is a
+ * camelCase-keyed object: `{ pageWidthPx, pageHeightPx, marginPx }`.
+ * @param {bigint} doc_id
+ * @param {string} viewport_json
+ * @returns {string}
+ */
+export function layoutDoc(doc_id, viewport_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(viewport_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.layoutDoc(doc_id, ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Phase 5.6.2 — multi-format open. `format` is one of
  * `"docx"`, `"md"` (alias `"markdown"`), `"html"`, `"rtf"`,
  * `"odt"`. Unknown identifiers yield `Error::UnknownFormat`.
