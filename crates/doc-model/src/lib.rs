@@ -89,6 +89,13 @@ const STATE_REJECTED: &str = "rejected";
 /// id string to dispatch.
 const MARK_KEY_SUGGESTED: &str = "suggested";
 
+/// Phase 5.1 — Loro mark key applied to the `\u{E001}` footnote
+/// marker codepoint. Value is `LoroValue::String(footnote_id)`.
+/// Anchoring footnotes via marks (not the stored `at`) keeps
+/// `footnote_at(pos)` stable across body edits — the marker (and its
+/// mark) drift together when codepoints are inserted before them.
+const MARK_KEY_FOOTNOTE: &str = "footnote";
+
 /// Comment-status string codes (Phase 4.6). Single source of truth.
 const STATUS_OPEN: &str = "open";
 const STATUS_RESOLVED: &str = "resolved";
@@ -786,6 +793,96 @@ impl Doc {
     /// to this `Doc` instance (Phase D, transient).
     pub fn last_footnote_id(&self) -> Option<String> {
         self.last_footnote_id.clone()
+    }
+
+    /// Phase 5.1 — find the codepoint range currently carrying the
+    /// "footnote" mark whose value matches `footnote_id`. Returns
+    /// `None` when the mark is absent (eg. unknown id, or a snapshot
+    /// imported from a pre-5.1 doc that did not register the mark).
+    ///
+    /// The marked range is always exactly one codepoint (the
+    /// `\u{E001}` marker), so the returned range has `end - start == 1`
+    /// for any successful lookup.
+    pub fn find_footnote_range(&self, footnote_id: &str) -> Option<Range<usize>> {
+        let mut cursor: usize = 0;
+        let mut start: Option<usize> = None;
+        let mut end: Option<usize> = None;
+        for segment in self.body().to_delta() {
+            let TextDelta::Insert { insert, attributes } = segment else {
+                continue;
+            };
+            let chars = insert.chars().count();
+            let marked = attributes
+                .as_ref()
+                .and_then(|a| a.get(MARK_KEY_FOOTNOTE))
+                .map(|v| matches!(v, LoroValue::String(s) if s.as_ref() == footnote_id))
+                .unwrap_or(false);
+            if marked {
+                if start.is_none() {
+                    start = Some(cursor);
+                }
+                end = Some(cursor + chars);
+            }
+            cursor += chars;
+        }
+        Some(start?..end?)
+    }
+
+    /// Phase 5.1 — `Some(footnote_id)` if codepoint position `pos` is
+    /// the marker codepoint of a footnote; `None` otherwise. The
+    /// editor surface uses this to wire a click on the superscript
+    /// number to the footnote area.
+    pub fn footnote_at(&self, pos: usize) -> Option<String> {
+        let mut cursor: usize = 0;
+        for segment in self.body().to_delta() {
+            let TextDelta::Insert { insert, attributes } = segment else {
+                continue;
+            };
+            let chars = insert.chars().count();
+            if pos < cursor + chars {
+                return attributes
+                    .as_ref()
+                    .and_then(|a| a.get(MARK_KEY_FOOTNOTE))
+                    .and_then(|v| match v {
+                        LoroValue::String(s) => Some(s.to_string()),
+                        _ => None,
+                    });
+            }
+            cursor += chars;
+        }
+        None
+    }
+
+    /// Phase 5.1 — every footnote in the doc, ordered by the CURRENT
+    /// position of its marker in body. The first footnote in the
+    /// returned slice is the one closest to the start of the body and
+    /// renders with display number 1; the second renders as 2; etc.
+    /// Layout consumes this to assign display numbers and pack
+    /// footnote shelves on the corresponding pages.
+    ///
+    /// `to_delta` walks segments in body left-to-right order, so the
+    /// encounter order is already body-position order — no explicit
+    /// sort needed.
+    pub fn footnotes_in_body_order(&self) -> Vec<Footnote> {
+        self.body()
+            .to_delta()
+            .into_iter()
+            .filter_map(|segment| {
+                let TextDelta::Insert {
+                    insert: _,
+                    attributes,
+                } = segment
+                else {
+                    return None;
+                };
+                let LoroValue::String(s) =
+                    attributes.as_ref().and_then(|a| a.get(MARK_KEY_FOOTNOTE))?
+                else {
+                    return None;
+                };
+                self.footnote(s)
+            })
+            .collect()
     }
 }
 
@@ -1669,8 +1766,11 @@ impl Doc {
     }
 
     /// Insert a footnote marker `\u{E001}` at codepoint position
-    /// `at` and record `(at, body)` under a generated id. Same anchor
-    /// caveat as `handle_insert_citation`.
+    /// `at`, mark-anchor it with `MARK_KEY_FOOTNOTE = id` (Phase 5.1),
+    /// and record `(at, body)` under the generated id. The mark is
+    /// the authoritative anchor — it follows the marker codepoint
+    /// across body edits, keeping `footnote_at(pos)` stable. The
+    /// stored `at` is historical metadata only.
     fn handle_insert_footnote(&mut self, at: Position, body: BlockTree) -> Result<(), Error> {
         let id = self.next_id("fn", META_KEY_NEXT_FOOTNOTE);
         let body_text = self.body();
@@ -1679,6 +1779,9 @@ impl Doc {
         body_text
             .insert(at, &FOOTNOTE_MARKER.to_string())
             .expect("loro insert should not fail");
+        body_text
+            .mark(at..at + 1, MARK_KEY_FOOTNOTE, id.clone())
+            .expect("loro mark should not fail");
         let entry = self
             .footnotes_map()
             .get_or_create_container(&id, LoroMap::new())

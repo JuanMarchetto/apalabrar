@@ -151,6 +151,52 @@ pub struct Page {
     /// not 0 — academic citations ("see p. 47") use 1-indexed page
     /// numbers, so the renderer never has to adjust.
     pub page_number: usize,
+    /// Phase 5.1 — footnote bodies pinned to this page's bottom
+    /// shelf. Stacked top-down in the order their markers appear in
+    /// the body. A footnote that overflows the shelf produces an
+    /// additional `FootnoteBox` on the next page with
+    /// `is_continuation = true`.
+    pub footnotes: Vec<FootnoteBox>,
+}
+
+/// Phase 5.1 — A shaped footnote body block on a page's bottom shelf.
+/// `display_number` is 1-indexed by body position (Word default).
+/// Multiple `FootnoteBox`es per page when several markers land on
+/// the same page; a `FootnoteBox` with `is_continuation = true`
+/// represents the tail of a footnote that started on a previous page.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FootnoteBox {
+    pub footnote_id: String,
+    pub display_number: usize,
+    pub origin_x_px: f32,
+    pub origin_y_px: f32,
+    pub width_px: f32,
+    pub height_px: f32,
+    pub lines: Vec<Line>,
+    /// `true` when this box is the continuation tail of a footnote
+    /// whose first segment landed on a prior page; `false` for the
+    /// first segment (or a fully-fitting body).
+    pub is_continuation: bool,
+}
+
+/// Phase 5.1 — The body-side anchor of a footnote: the `\u{E001}`
+/// marker codepoint laid out inside a `BlockBox`. `display_number`
+/// is the 1-indexed position-order number that the JS renderer
+/// paints on top of the marker as a superscript.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FootnoteRef {
+    pub footnote_id: String,
+    pub display_number: usize,
+    /// 0-indexed page in [`RenderPlan::pages`].
+    pub page_index: usize,
+    /// Index of the `BlockBox` segment within `Page::blocks`.
+    pub block_index: usize,
+    /// Line index inside that `BlockBox`'s `lines` slice.
+    pub line_index: usize,
+    /// X position of the marker glyph relative to the block's origin.
+    pub x_px: f32,
+    /// Y baseline position relative to the block's origin.
+    pub baseline_y_px: f32,
 }
 
 /// Pagination rules. Defaults match Microsoft Word's standard
@@ -185,7 +231,8 @@ impl Default for PaginationConfig {
 pub const HARD_PAGE_BREAK_MARKER: char = '\u{000C}';
 
 /// Output of [`layout`]. Phase 4.1 filled `pages` and `dirty_rects`;
-/// Phase 4.2 adds `glyph_runs` (one entry per shaped line). Future
+/// Phase 4.2 adds `glyph_runs` (one entry per shaped line); Phase 5.1
+/// adds `footnote_refs` (one per `\u{E001}` marker in body). Future
 /// phases add `selections` and `carets` on top of `#[non_exhaustive]`.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -193,6 +240,11 @@ pub struct RenderPlan {
     pub pages: Vec<Page>,
     pub dirty_rects: Vec<Rect>,
     pub glyph_runs: Vec<GlyphRun>,
+    /// Phase 5.1 — body-side anchors for each footnote, in body
+    /// (position-) order. The JS renderer paints `display_number` as
+    /// a superscript on top of the marker glyph using the `(page_index,
+    /// block_index, line_index, x_px, baseline_y_px)` coordinates.
+    pub footnote_refs: Vec<FootnoteRef>,
 }
 
 impl RenderPlan {
@@ -406,11 +458,14 @@ pub fn layout_with_config(
         })
         .collect();
 
-    Ok(RenderPlan {
+    let mut plan = RenderPlan {
         pages,
         dirty_rects,
         glyph_runs,
-    })
+        footnote_refs: Vec::new(),
+    };
+    attach_footnotes(&mut plan, doc, viewport);
+    Ok(plan)
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -669,6 +724,8 @@ fn pack_pages(shaped: &[ShapedBlock], viewport: &Viewport, config: &PaginationCo
             pages.push(Page {
                 blocks: std::mem::take(blocks),
                 page_number: *page_number,
+                // Phase 5.1 GREEN — populated by `attach_footnotes`.
+                footnotes: Vec::new(),
             });
             *page_number += 1;
             *y_cursor = 0.0;
@@ -825,9 +882,277 @@ fn pack_pages(shaped: &[ShapedBlock], viewport: &Viewport, config: &PaginationCo
         pages.push(Page {
             blocks: current_blocks,
             page_number: current_page_number,
+            // Phase 5.1 GREEN — populated by `attach_footnotes`.
+            footnotes: Vec::new(),
         });
     }
     pages
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 5.1 — footnote attachment
+// ─────────────────────────────────────────────────────────────────
+
+/// 10pt at 96 DPI ≈ 13.33 px (Word default footnote size).
+const FOOTNOTE_FONT_SIZE_PX: f32 = 13.33;
+/// Footnote line height (≈ 1.2× font size).
+const FOOTNOTE_LINE_HEIGHT_PX: f32 = 16.0;
+/// Empty space between body content and the start of the footnote
+/// shelf, so the shelf reads as a separate region rather than as
+/// continuation of the body.
+const FOOTNOTE_SHELF_GAP_PX: f32 = 12.0;
+
+/// One footnote ready to be packed onto pages.
+struct ShapedFootnoteEntry {
+    footnote_id: String,
+    display_number: usize,
+    /// Page (0-indexed) where the marker codepoint landed; the first
+    /// segment of the footnote belongs to this page. Continuation
+    /// tail flows to subsequent pages.
+    page_index: usize,
+    /// Shaped lines of the footnote's flattened body text. Pure
+    /// height-tracking — glyph runs for the footnote shelf land in
+    /// a future phase once the renderer wants to paint footnote
+    /// glyphs (today's JS overlay only needs the line geometry).
+    lines: Vec<Line>,
+}
+
+/// Map a body-codepoint position to `(block_index, offset_in_block)`.
+/// Returns `None` when `body_pos` is the `\n` boundary between two
+/// blocks (no block owns it). For markers this never happens — the
+/// `\u{E001}` codepoint is a regular block character, not a boundary.
+fn body_pos_to_block(block_starts: &[usize], body_pos: usize) -> Option<(usize, usize)> {
+    let block_count = block_starts.len().checked_sub(1)?;
+    for i in 0..block_count {
+        let start = block_starts[i];
+        let block_end = if i + 1 == block_count {
+            // Last block has no trailing `\n`.
+            block_starts[i + 1]
+        } else {
+            // Earlier blocks end at one-before the `\n` boundary.
+            block_starts[i + 1].saturating_sub(1)
+        };
+        if body_pos < block_end {
+            return Some((i, body_pos - start));
+        }
+    }
+    None
+}
+
+/// Locate a marker codepoint in an already-laid-out [`RenderPlan`].
+/// Returns `(page_index, block_box_idx_in_page, line_in_box, x_px,
+/// baseline_y_px)`. `None` when the marker is on a synthetic empty
+/// line (no glyph_runs entry for it) or not in the plan at all.
+fn locate_marker(
+    plan: &RenderPlan,
+    target_block: usize,
+    offset_in_block: usize,
+) -> Option<(usize, usize, usize, f32, f32)> {
+    // Find absolute_line_in_block + glyph x_px by scanning glyph_runs.
+    let mut absolute_line: Option<usize> = None;
+    let mut x_px = 0.0;
+    let mut baseline_y_px = 0.0;
+    for run in &plan.glyph_runs {
+        if run.block_index != target_block {
+            continue;
+        }
+        for g in &run.glyphs {
+            let cs = g.cluster_start as usize;
+            let ce = g.cluster_end as usize;
+            if cs <= offset_in_block && offset_in_block < ce {
+                absolute_line = Some(run.line_index);
+                x_px = g.x_px;
+                baseline_y_px = run.baseline_y_px;
+                break;
+            }
+        }
+        if absolute_line.is_some() {
+            break;
+        }
+    }
+    let absolute_line = absolute_line?;
+    // Walk pages → block_boxes for one whose block_index + line_range covers it.
+    for (page_idx, page) in plan.pages.iter().enumerate() {
+        for (block_box_idx, bb) in page.blocks.iter().enumerate() {
+            if bb.block_index != target_block {
+                continue;
+            }
+            if bb.line_range.contains(&absolute_line) {
+                let line_in_box = absolute_line - bb.line_range.start;
+                return Some((page_idx, block_box_idx, line_in_box, x_px, baseline_y_px));
+            }
+        }
+    }
+    None
+}
+
+/// Shape a footnote body's flattened text at footnote font size.
+/// Block-level structure within the footnote body is collapsed —
+/// blocks are joined by `\n` (the same projection cosmic-text does
+/// for the main body). Returns the `Line`s the renderer will paint;
+/// glyph runs aren't emitted for the shelf in v0.
+fn shape_footnote_body(
+    body: &apalabrar_doc_model::BlockTree,
+    viewport: &Viewport,
+    font_system: &mut FontSystem,
+) -> Vec<Line> {
+    let metrics = Metrics::new(FOOTNOTE_FONT_SIZE_PX, FOOTNOTE_LINE_HEIGHT_PX);
+    let mut buffer = Buffer::new(font_system, metrics);
+    let wrap_width = viewport.content_width().max(1.0);
+    buffer.set_size(font_system, Some(wrap_width), None);
+    let attrs = Attrs::new().family(Family::Name("DejaVu Sans"));
+    let text: String = body
+        .blocks
+        .iter()
+        .map(|b| b.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    buffer.set_text(font_system, &text, attrs, Shaping::Advanced);
+    buffer.shape_until_scroll(font_system, false);
+    buffer
+        .layout_runs()
+        .map(|run| Line {
+            width_px: run.line_w,
+            height_px: run.line_height,
+            baseline_y_px: run.line_y,
+        })
+        .collect()
+}
+
+/// Phase 5.1 — populate `RenderPlan.footnote_refs` and per-page
+/// `Page.footnotes`. Markers are resolved against the laid-out body
+/// (so refs carry the marker's actual on-page coordinates), and
+/// footnote bodies are shaped at footnote font size and packed onto
+/// each page's bottom shelf top-down. A footnote that doesn't fit
+/// on its host page splits to the next page (continuation).
+fn attach_footnotes(plan: &mut RenderPlan, doc: &apalabrar_doc_model::Doc, viewport: &Viewport) {
+    let body_footnotes = doc.footnotes_in_body_order();
+    if body_footnotes.is_empty() {
+        return;
+    }
+
+    // Codepoint position of each block's first char in body text.
+    let blocks = doc.blocks();
+    let mut block_starts = Vec::with_capacity(blocks.len() + 1);
+    block_starts.push(0usize);
+    for b in &blocks {
+        let last = *block_starts.last().unwrap();
+        block_starts.push(last + b.text.chars().count() + 1);
+    }
+
+    // Build refs + shape footnote bodies in one pass over the cache.
+    let mut refs: Vec<FootnoteRef> = Vec::with_capacity(body_footnotes.len());
+    let mut shaped: Vec<ShapedFootnoteEntry> = Vec::with_capacity(body_footnotes.len());
+    SHAPING_CACHE.with(|cell| {
+        let mut cache = cell.borrow_mut();
+        let fs = cache.font_system.get_or_insert_with(build_font_system);
+        for (i, footnote) in body_footnotes.iter().enumerate() {
+            let display_number = i + 1;
+            let id = footnote.id.clone();
+            let Some(range) = doc.find_footnote_range(&id) else {
+                continue;
+            };
+            let body_pos = range.start;
+            let Some((block_idx, offset_in_block)) = body_pos_to_block(&block_starts, body_pos)
+            else {
+                continue;
+            };
+            let Some((page_index, block_box_idx, line_in_box, x_px, baseline_y_px)) =
+                locate_marker(plan, block_idx, offset_in_block)
+            else {
+                continue;
+            };
+            refs.push(FootnoteRef {
+                footnote_id: id.clone(),
+                display_number,
+                page_index,
+                block_index: block_box_idx,
+                line_index: line_in_box,
+                x_px,
+                baseline_y_px,
+            });
+            let lines = shape_footnote_body(&footnote.body, viewport, fs);
+            shaped.push(ShapedFootnoteEntry {
+                footnote_id: id,
+                display_number,
+                page_index,
+                lines,
+            });
+        }
+    });
+
+    // Pack footnote shelves. Per-page y-cursor starts just below body.
+    let cw = viewport.content_width();
+    let ch = viewport.content_height();
+    let mut shelf_y: Vec<f32> = plan
+        .pages
+        .iter()
+        .map(|p| {
+            let body_bottom = p
+                .blocks
+                .iter()
+                .map(|b| b.origin_y_px + b.height_px)
+                .fold(0.0_f32, f32::max);
+            body_bottom + FOOTNOTE_SHELF_GAP_PX
+        })
+        .collect();
+
+    for entry in shaped {
+        let mut page_idx = entry.page_index;
+        let mut lines_remaining = entry.lines;
+        let mut is_continuation = false;
+        while !lines_remaining.is_empty() {
+            // Spawn additional pages if the continuation outruns the
+            // body's page count.
+            while page_idx >= plan.pages.len() {
+                let new_page_number = plan.pages.last().map(|p| p.page_number + 1).unwrap_or(1);
+                plan.pages.push(Page {
+                    blocks: Vec::new(),
+                    page_number: new_page_number,
+                    footnotes: Vec::new(),
+                });
+                shelf_y.push(FOOTNOTE_SHELF_GAP_PX);
+            }
+            let current_y = shelf_y[page_idx];
+            // Greedy packing: how many lines fit without overflowing
+            // the page's content height?
+            let mut total_h = 0.0;
+            let mut consumed = 0;
+            for line in &lines_remaining {
+                if current_y + total_h + line.height_px > ch + f32::EPSILON {
+                    break;
+                }
+                total_h += line.height_px;
+                consumed += 1;
+            }
+            if consumed == 0 {
+                // Even one footnote line can't fit on this page — bail
+                // to the next. (Possible when body content packed flush
+                // to the bottom of the page.)
+                page_idx += 1;
+                continue;
+            }
+            let segment_lines: Vec<Line> = lines_remaining.drain(..consumed).collect();
+            let segment_h: f32 = segment_lines.iter().map(|l| l.height_px).sum();
+            plan.pages[page_idx].footnotes.push(FootnoteBox {
+                footnote_id: entry.footnote_id.clone(),
+                display_number: entry.display_number,
+                origin_x_px: 0.0,
+                origin_y_px: current_y,
+                width_px: cw,
+                height_px: segment_h,
+                lines: segment_lines,
+                is_continuation,
+            });
+            shelf_y[page_idx] = current_y + segment_h;
+            if !lines_remaining.is_empty() {
+                is_continuation = true;
+                page_idx += 1;
+            }
+        }
+    }
+
+    plan.footnote_refs = refs;
 }
 
 fn push_segment(

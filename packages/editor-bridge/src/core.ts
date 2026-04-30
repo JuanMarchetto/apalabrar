@@ -132,6 +132,19 @@ export interface Comment {
   replies: CommentReply[];
 }
 
+/**
+ * Phase 5.1 — footnote snapshot returned by `core.footnotes()`.
+ * `at` is the codepoint position of the `\u{E001}` marker in body
+ * at creation time; the marker (and its mark-anchored id) drift
+ * with subsequent edits — to read the CURRENT marker position use
+ * the layout `FootnoteRef`. `body` is the footnote contents.
+ */
+export interface Footnote {
+  id: string;
+  at: Position;
+  body: BlockTree;
+}
+
 /// Branded handle returned by `createDoc` / `restoreFromSnapshot`.
 /// Wraps a `bigint` (the wasm-bindgen u64 representation) so
 /// callers can't accidentally swap a doc id for any other bigint.
@@ -159,6 +172,8 @@ export interface ApalabrarCoreWasm {
   commentsInDoc(docId: bigint): string;
   /** Phase 4.7 — returns a JSON-encoded `Suggestion[]`. */
   suggestionsInDoc(docId: bigint): string;
+  /** Phase 5.1 — returns a JSON-encoded `Footnote[]` in body-position order. */
+  footnotesInDoc(docId: bigint): string;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -263,5 +278,14 @@ export class ApalabrarCore {
    */
   suggestions(id: CoreDocId): Suggestion[] {
     return JSON.parse(this.wasm.suggestionsInDoc(id)) as Suggestion[];
+  }
+
+  /**
+   * Phase 5.1 — list every footnote in the doc, in body-position
+   * order. The first footnote in the returned array renders as
+   * superscript "1"; the second as "2"; etc.
+   */
+  footnotes(id: CoreDocId): Footnote[] {
+    return JSON.parse(this.wasm.footnotesInDoc(id)) as Footnote[];
   }
 }

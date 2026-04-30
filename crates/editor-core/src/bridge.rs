@@ -190,6 +190,19 @@ pub fn suggestions_json(doc_id: DocId) -> Result<String, Error> {
     Ok(serialize_or_panic(&suggestions))
 }
 
+/// Phase 5.1 — every footnote in the doc, JSON-encoded as a
+/// `Footnote[]` in body-position order. The shape matches the
+/// TypeScript `Footnote` interface in
+/// `packages/editor-bridge/src/core.ts`.
+pub fn footnotes_json(doc_id: DocId) -> Result<String, Error> {
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let footnotes = entry.doc.footnotes_in_body_order();
+    Ok(serialize_or_panic(&footnotes))
+}
+
 /// All comment threads in the doc, JSON-encoded as a `Comment[]`.
 /// The shape matches the TypeScript `Comment` interface in
 /// `packages/editor-bridge/src/core.ts`. Threads are returned sorted
@@ -275,7 +288,7 @@ mod wasm_api {
 
     use crate::bridge::{
         apply_edit_op_json, block_at_json, block_count, comments_json, create_doc, find_json,
-        restore_from_snapshot, snapshot, suggestions_json,
+        footnotes_json, restore_from_snapshot, snapshot, suggestions_json,
     };
     use crate::{DocId, Error, close_doc, doc_text};
 
@@ -336,5 +349,10 @@ mod wasm_api {
     #[wasm_bindgen(js_name = suggestionsInDoc)]
     pub fn js_suggestions_in_doc(doc_id: u64) -> Result<String, JsValue> {
         suggestions_json(DocId(doc_id)).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = footnotesInDoc)]
+    pub fn js_footnotes_in_doc(doc_id: u64) -> Result<String, JsValue> {
+        footnotes_json(DocId(doc_id)).map_err(err)
     }
 }

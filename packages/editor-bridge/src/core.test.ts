@@ -85,6 +85,13 @@ class WasmMock implements ApalabrarCoreWasm {
     this.record('suggestionsInDoc', [docId]);
     return this.suggestionsResultJson;
   }
+
+  footnotesResultJson = '[]';
+
+  footnotesInDoc(docId: bigint): string {
+    this.record('footnotesInDoc', [docId]);
+    return this.footnotesResultJson;
+  }
 }
 
 describe('ApalabrarCore', () => {
