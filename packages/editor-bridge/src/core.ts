@@ -150,6 +150,17 @@ export interface Footnote {
 /// callers can't accidentally swap a doc id for any other bigint.
 export type CoreDocId = bigint & { readonly __brand: 'CoreDocId'; };
 
+/**
+ * Phase 5.6.2 — supported document formats for `openDoc` / `toFormat`.
+ *
+ * - `'docx'` and `'markdown'` round-trip through the editor in v0.
+ * - `'html'` is read/written as UTF-8 source in v0.
+ * - `'rtf'` and `'odt'` are recognised but their crates are stubs;
+ *   the wasm side returns `FormatNotSupported` so the UI can show a
+ *   "deferred to v1" message rather than a generic parse error.
+ */
+export type DocFormat = 'docx' | 'markdown' | 'html' | 'rtf' | 'odt';
+
 // ─────────────────────────────────────────────────────────────────
 // Wasm module interface — the exports `apalabrar-editor-core` will
 // expose once the pkg is rebuilt with the Phase 2.3 bridge module.
@@ -174,6 +185,12 @@ export interface ApalabrarCoreWasm {
   suggestionsInDoc(docId: bigint): string;
   /** Phase 5.1 — returns a JSON-encoded `Footnote[]` in body-position order. */
   footnotesInDoc(docId: bigint): string;
+  /** Phase 5.6.2 — multi-format open. `format` is the canonical
+   *  short form (`'docx' | 'md' | 'html' | 'rtf' | 'odt'`); the
+   *  bridge accepts `'markdown'` as a synonym for `'md'`. */
+  openDoc(bytes: Uint8Array, format: string): bigint;
+  /** Phase 5.6.2 — symmetric multi-format save. */
+  toFormat(docId: bigint, format: string): Uint8Array;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -287,5 +304,23 @@ export class ApalabrarCore {
    */
   footnotes(id: CoreDocId): Footnote[] {
     return JSON.parse(this.wasm.footnotesInDoc(id)) as Footnote[];
+  }
+
+  /**
+   * Phase 5.6.2 — open a document in any supported format. Throws
+   * via the wasm boundary on `EmptyInput`, `InvalidInput`, or
+   * `FormatNotSupported`; the caller decides how to surface those.
+   */
+  openDoc(bytes: Uint8Array, format: DocFormat): CoreDocId {
+    return this.wasm.openDoc(bytes, format === 'markdown' ? 'md' : format) as CoreDocId;
+  }
+
+  /**
+   * Phase 5.6.2 — symmetric multi-format save. Returns the bytes
+   * the host should hand to the file picker / blob download.
+   * Throws on `FormatNotSupported`.
+   */
+  toFormat(id: CoreDocId, format: DocFormat): Uint8Array {
+    return this.wasm.toFormat(id, format === 'markdown' ? 'md' : format);
   }
 }

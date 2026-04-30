@@ -62,11 +62,18 @@ export {
   type CoreDocId,
   type EditOp,
   type FindOptions,
+  type Footnote,
   type Mark,
   type Match,
   type Position,
   type Suggestion,
   type SuggestionState,
 } from './core';
+
+// Phase 5.6.1 — runtime bootstrap. The app shell calls `await initWasm()`
+// once at startup; downstream consumers reach the configured core
+// through `getCore()`. `__resetCoreForTests` is a test-only escape
+// hatch for vitest suites that need an isolated singleton per case.
+export { __resetCoreForTests, getCore, initWasm, type InitWasmOptions } from './runtime';
 
 export const VERSION = '0.0.0' as const;

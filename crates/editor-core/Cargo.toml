@@ -21,11 +21,18 @@ apalabrar-format-docx.workspace = true
 apalabrar-format-html.workspace = true
 apalabrar-format-md.workspace = true
 apalabrar-layout.workspace = true
-apalabrar-plugin-host.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
+
+# The plugin host depends on wasmtime+cranelift, which cannot itself
+# compile to wasm32. Apalabrar plugins run in the desktop/server tier
+# (a Tauri shell or the sync server), never inside the browser bundle.
+# Kept out of the wasm32 target so `wasm-pack build` succeeds for
+# editor-core; native tests still pull it in via the native target.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+apalabrar-plugin-host.workspace = true
 
 [dev-dependencies]
 docx-rs.workspace = true

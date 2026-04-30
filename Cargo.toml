@@ -55,7 +55,11 @@ html5ever = "0.29"
 markup5ever_rcdom = "0.5.0-unofficial"
 pulldown-cmark = "0.12"
 quick-xml = "0.36"
-zip = "0.6"
+# Default features pull in `zstd-sys`, which needs a system clang to build for
+# wasm32. DOCX uses Deflate, not Zstd, so we strip the unused features. Keep
+# this in lock-step with `docx-rs`'s own zip dep declaration so feature
+# unification doesn't quietly re-enable zstd.
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 # Citation — citeproc-rs is not yet published to crates.io; the citation crate
 # will pull it in via git source when the engine is implemented (Prompt 2.x).

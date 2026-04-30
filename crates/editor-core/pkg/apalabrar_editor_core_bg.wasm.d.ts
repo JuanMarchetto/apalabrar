@@ -2,11 +2,25 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const applyDelete: (a: bigint, b: number, c: number) => [number, number];
+export const applyEditOp: (a: bigint, b: number, c: number) => [number, number];
 export const applyInsert: (a: bigint, b: number, c: number, d: number) => [number, number];
-export const closeDoc: (a: bigint) => [number, number];
-export const docText: (a: bigint) => [number, number, number, number];
+export const blockAt: (a: bigint, b: number) => [number, number, number, number];
+export const blockCount: (a: bigint) => [number, number, number];
+export const bridgeCloseDoc: (a: bigint) => [number, number];
+export const bridgeDocText: (a: bigint) => [number, number, number, number];
+export const bridgeSnapshot: (a: bigint) => [number, number, number, number];
+export const commentsInDoc: (a: bigint) => [number, number, number, number];
+export const findInDoc: (a: bigint, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const footnotesInDoc: (a: bigint) => [number, number, number, number];
+export const openDoc: (a: number, b: number, c: number, d: number) => [bigint, number, number];
 export const openDocx: (a: number, b: number) => [bigint, number, number];
+export const restoreFromSnapshot: (a: number, b: number) => [bigint, number, number];
+export const suggestionsInDoc: (a: bigint) => [number, number, number, number];
 export const toDocx: (a: bigint) => [number, number, number, number];
+export const toFormat: (a: bigint, b: number, c: number) => [number, number, number, number];
+export const createDoc: () => bigint;
+export const docText: (a: bigint) => [number, number, number, number];
+export const closeDoc: (a: bigint) => [number, number];
 export const __wbindgen_exn_store: (a: number) => void;
 export const __externref_table_alloc: () => number;
 export const __wbindgen_externrefs: WebAssembly.Table;

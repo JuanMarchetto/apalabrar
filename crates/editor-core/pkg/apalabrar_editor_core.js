@@ -14,6 +14,19 @@ export function applyDelete(doc_id, start, end) {
 
 /**
  * @param {bigint} doc_id
+ * @param {string} op_json
+ */
+export function applyEditOp(doc_id, op_json) {
+    const ptr0 = passStringToWasm0(op_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.applyEditOp(doc_id, ptr0, len0);
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+/**
+ * @param {bigint} doc_id
  * @param {number} offset
  * @param {string} text
  */
@@ -28,12 +41,120 @@ export function applyInsert(doc_id, offset, text) {
 
 /**
  * @param {bigint} doc_id
+ * @param {number} idx
+ * @returns {string | undefined}
+ */
+export function blockAt(doc_id, idx) {
+    const ret = wasm.blockAt(doc_id, idx);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    let v1;
+    if (ret[0] !== 0) {
+        v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v1;
+}
+
+/**
+ * @param {bigint} doc_id
+ * @returns {number}
+ */
+export function blockCount(doc_id) {
+    const ret = wasm.blockCount(doc_id);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
+ * @param {bigint} doc_id
+ */
+export function bridgeCloseDoc(doc_id) {
+    const ret = wasm.bridgeCloseDoc(doc_id);
+    if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+    }
+}
+
+/**
+ * @param {bigint} doc_id
+ * @returns {string}
+ */
+export function bridgeDocText(doc_id) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.bridgeDocText(doc_id);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @param {bigint} doc_id
+ * @returns {Uint8Array}
+ */
+export function bridgeSnapshot(doc_id) {
+    const ret = wasm.bridgeSnapshot(doc_id);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+}
+
+/**
+ * @param {bigint} doc_id
  */
 export function closeDoc(doc_id) {
     const ret = wasm.closeDoc(doc_id);
     if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
     }
+}
+
+/**
+ * @param {bigint} doc_id
+ * @returns {string}
+ */
+export function commentsInDoc(doc_id) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.commentsInDoc(doc_id);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @returns {bigint}
+ */
+export function createDoc() {
+    const ret = wasm.createDoc();
+    return BigInt.asUintN(64, ret);
 }
 
 /**
@@ -60,6 +181,78 @@ export function docText(doc_id) {
 }
 
 /**
+ * @param {bigint} doc_id
+ * @param {string} needle
+ * @param {string} opts_json
+ * @returns {string}
+ */
+export function findInDoc(doc_id, needle, opts_json) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(needle, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(opts_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.findInDoc(doc_id, ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * @param {bigint} doc_id
+ * @returns {string}
+ */
+export function footnotesInDoc(doc_id) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.footnotesInDoc(doc_id);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * Phase 5.6.2 — multi-format open. `format` is one of
+ * `"docx"`, `"md"` (alias `"markdown"`), `"html"`, `"rtf"`,
+ * `"odt"`. Unknown identifiers yield `Error::UnknownFormat`.
+ * @param {Uint8Array} bytes
+ * @param {string} format
+ * @returns {bigint}
+ */
+export function openDoc(bytes, format) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(format, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.openDoc(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
  * @param {Uint8Array} bytes
  * @returns {bigint}
  */
@@ -74,6 +267,43 @@ export function openDocx(bytes) {
 }
 
 /**
+ * @param {Uint8Array} snap
+ * @returns {bigint}
+ */
+export function restoreFromSnapshot(snap) {
+    const ptr0 = passArray8ToWasm0(snap, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.restoreFromSnapshot(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * @param {bigint} doc_id
+ * @returns {string}
+ */
+export function suggestionsInDoc(doc_id) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.suggestionsInDoc(doc_id);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * @param {bigint} doc_id
  * @returns {Uint8Array}
  */
@@ -85,6 +315,26 @@ export function toDocx(doc_id) {
     var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
     return v1;
+}
+
+/**
+ * Phase 5.6.2 — symmetric multi-format save. Returns the
+ * serialised bytes for the requested format, or surfaces a
+ * `FormatNotSupported` / `UnknownFormat` error.
+ * @param {bigint} doc_id
+ * @param {string} format
+ * @returns {Uint8Array}
+ */
+export function toFormat(doc_id, format) {
+    const ptr0 = passStringToWasm0(format, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.toFormat(doc_id, ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
 }
 function __wbg_get_imports() {
     const import0 = {

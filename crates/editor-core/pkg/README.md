@@ -170,6 +170,16 @@ mutations block PRs.**
 
 ---
 
+## Tooling
+
+Apalabrar is built with modern engineering practices: test-first development, property-based testing
+on critical layers (CRDT, layout, parsers), differential testing against reference implementations
+(MS Word for OOXML, Yjs for CRDT, citeproc-js for citations), and AI coding assistants alongside the
+human author. Engineering rigor is verified by CI gates — coverage floors, mutation kill rates, and
+license auditing — not by tool choice. See `CONTRIBUTING.md` for the full discipline.
+
+---
+
 ## Inspirations & dependencies
 
 This is greenfield code, but it stands on excellent shoulders. See

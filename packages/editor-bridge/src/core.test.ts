@@ -92,6 +92,18 @@ class WasmMock implements ApalabrarCoreWasm {
     this.record('footnotesInDoc', [docId]);
     return this.footnotesResultJson;
   }
+
+  openDocResult = 99n;
+  openDoc(bytes: Uint8Array, format: string): bigint {
+    this.record('openDoc', [bytes, format]);
+    return this.openDocResult;
+  }
+
+  toFormatResult = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+  toFormat(docId: bigint, format: string): Uint8Array {
+    this.record('toFormat', [docId, format]);
+    return this.toFormatResult;
+  }
 }
 
 describe('ApalabrarCore', () => {
@@ -455,6 +467,56 @@ describe('ApalabrarCore', () => {
       expect(threads[0]?.replies).toEqual([
         { id: 'r-1', body: 'agreed', author: 'bob', created_at: 2 },
       ]);
+    });
+  });
+
+  describe('multi-format I/O (Phase 5.6.2)', () => {
+    it('openDoc forwards bytes and the canonical format string', () => {
+      const wasm = new WasmMock();
+      const core = new ApalabrarCore(wasm);
+      const bytes = new Uint8Array([1, 2, 3]);
+      const id = core.openDoc(bytes, 'docx');
+      expect(id).toBe(wasm.openDocResult);
+      expect(wasm.log[0]).toEqual({ fn: 'openDoc', args: [bytes, 'docx'] });
+    });
+
+    it('openDoc translates the markdown synonym to md before crossing the wasm boundary', () => {
+      const wasm = new WasmMock();
+      const core = new ApalabrarCore(wasm);
+      core.openDoc(new Uint8Array(), 'markdown');
+      const open = wasm.log.find((c) => c.fn === 'openDoc');
+      expect(open?.args[1]).toBe('md');
+    });
+
+    it('openDoc passes html / rtf / odt verbatim', () => {
+      for (const format of ['html', 'rtf', 'odt'] as const) {
+        const wasm = new WasmMock();
+        const core = new ApalabrarCore(wasm);
+        core.openDoc(new Uint8Array(), format);
+        const open = wasm.log.find((c) => c.fn === 'openDoc');
+        expect(open?.args[1]).toBe(format);
+      }
+    });
+
+    it('toFormat returns the wasm bytes', () => {
+      const wasm = new WasmMock();
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      const out = core.toFormat(id, 'docx');
+      expect(out).toBe(wasm.toFormatResult);
+      expect(wasm.log.find((c) => c.fn === 'toFormat')).toEqual({
+        fn: 'toFormat',
+        args: [id, 'docx'],
+      });
+    });
+
+    it('toFormat translates markdown synonym to md', () => {
+      const wasm = new WasmMock();
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      core.toFormat(id, 'markdown');
+      const call = wasm.log.find((c) => c.fn === 'toFormat');
+      expect(call?.args[1]).toBe('md');
     });
   });
 

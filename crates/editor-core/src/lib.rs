@@ -46,6 +46,29 @@ pub enum EditOp {
     DeleteRange { start: usize, end: usize },
 }
 
+/// Document file format. Phase 5.6.2 introduces multi-format I/O so
+/// the editor surface is symmetric across the formats Apalabrar
+/// supports today and signals which ones are still v1 stubs.
+///
+/// - `Docx` is the v0 hero format (lossless OOXML round-trip is the
+///   moat; the v0 plain-text path uses `format_docx::parse_text` /
+///   `serialize_text`).
+/// - `Markdown` and `Html` are functional in v0 via UTF-8 passthrough:
+///   the source string IS the editable text. The structural readers
+///   in `format-md` / `format-html` round-trip semantically and will
+///   replace the passthrough once Phase 5.9 wires the rich-edit path.
+/// - `Rtf` and `Odt` are stubs in `format-rtf` / `format-odt`. The
+///   editor surface returns [`Error::FormatNotSupported`] so the UI
+///   can show "coming in v1" rather than silently failing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocFormat {
+    Docx,
+    Markdown,
+    Html,
+    Rtf,
+    Odt,
+}
+
 /// Failure modes for the editor-core public API.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -53,6 +76,27 @@ pub enum Error {
     EmptyInput,
     #[error("input bytes are not a valid OOXML/.docx file")]
     InvalidOoxml,
+    /// Phase 5.6.2 — generic invalid-input variant for the multi-format
+    /// `open_doc` path (UTF-8 decode failure for MD/HTML, malformed
+    /// .docx for the structural format-docx parser, etc.). The legacy
+    /// [`Error::InvalidOoxml`] stays as a more specific variant so
+    /// callers of the original `open_docx` see no behavioural change.
+    #[error("input bytes are not a valid {format:?} document: {reason}")]
+    InvalidInput { format: DocFormat, reason: String },
+    /// Phase 5.6.2 — the requested format is recognised but its
+    /// implementation is deferred to v1. Callers can show a clear
+    /// "this format ships in a later release" message rather than a
+    /// generic parse error. Currently [`DocFormat::Rtf`] and
+    /// [`DocFormat::Odt`] return this; both have stub crates in the
+    /// workspace.
+    #[error("{format:?} format support is not yet implemented (deferred to v1)")]
+    FormatNotSupported { format: DocFormat },
+    /// Phase 5.6.2 — the wasm bridge accepts the format as a string
+    /// (`"docx"`, `"md"`, `"html"`, `"rtf"`, `"odt"`); anything else
+    /// produces this. Reported separately from [`Error::InvalidInput`]
+    /// because the latter is parametric on a known format.
+    #[error("unknown format identifier: {name}")]
+    UnknownFormat { name: String },
     #[error("doc id {0:?} is unknown to the registry")]
     UnknownDoc(DocId),
     #[error("offset {offset} is past document length {len}")]
@@ -190,6 +234,69 @@ pub fn find(
     Ok(find::find(&text, needle, opts))
 }
 
+/// Phase 5.6.2 — open a document in any supported format.
+///
+/// Dispatches to format-specific parsers and seeds the doc registry
+/// with the result. See [`DocFormat`] for which formats are wired in
+/// v0 and which return [`Error::FormatNotSupported`].
+pub fn open_doc(bytes: &[u8], format: DocFormat) -> Result<DocId, Error> {
+    if bytes.is_empty() {
+        return Err(Error::EmptyInput);
+    }
+    let text = match format {
+        DocFormat::Docx => {
+            apalabrar_format_docx::parse_text(bytes).map_err(|e| Error::InvalidInput {
+                format,
+                reason: e.to_string(),
+            })?
+        }
+        DocFormat::Markdown | DocFormat::Html => decode_utf8(bytes, format)?,
+        DocFormat::Rtf | DocFormat::Odt => return Err(Error::FormatNotSupported { format }),
+    };
+    seed_doc_with_text(&text)
+}
+
+/// Phase 5.6.2 — serialize a document back to the requested format.
+///
+/// DOCX uses `format_docx::serialize_text` (round-trips with the v0
+/// plain-text path). Markdown and HTML emit the doc text as UTF-8
+/// bytes — this is the symmetric counterpart to the passthrough
+/// `open_doc` path. Rtf/Odt return [`Error::FormatNotSupported`].
+pub fn to_format(doc_id: DocId, format: DocFormat) -> Result<Vec<u8>, Error> {
+    let text = doc_text(doc_id)?;
+    match format {
+        DocFormat::Docx => {
+            apalabrar_format_docx::serialize_text(&text).map_err(|e| Error::SerializeFailed {
+                reason: e.to_string(),
+            })
+        }
+        DocFormat::Markdown | DocFormat::Html => Ok(text.into_bytes()),
+        DocFormat::Rtf | DocFormat::Odt => Err(Error::FormatNotSupported { format }),
+    }
+}
+
+fn decode_utf8(bytes: &[u8], format: DocFormat) -> Result<String, Error> {
+    std::str::from_utf8(bytes)
+        .map(|s| s.to_owned())
+        .map_err(|e| Error::InvalidInput {
+            format,
+            reason: e.to_string(),
+        })
+}
+
+fn seed_doc_with_text(text: &str) -> Result<DocId, Error> {
+    let mut doc = apalabrar_doc_model::Doc::new();
+    if !text.is_empty() {
+        doc.insert(0, text);
+    }
+    let id_value = allocate_id();
+    registry()
+        .lock()
+        .expect("registry mutex must not be poisoned")
+        .insert(id_value, Document { doc });
+    Ok(DocId(id_value))
+}
+
 /// Drop a document from the registry.
 pub fn close_doc(doc_id: DocId) -> Result<(), Error> {
     let mut reg = registry()
@@ -238,6 +345,24 @@ fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
     text[..byte_offset].chars().count()
 }
 
+/// Phase 5.6.2 — parse a format identifier string into [`DocFormat`].
+/// Used by both the wasm bridge and any external CLI/host. The
+/// canonical short forms (`docx`, `md`, `html`, `rtf`, `odt`) match
+/// the file extensions the JS side dispatches on; `markdown` is
+/// accepted as a synonym for `md`.
+pub fn parse_doc_format(s: &str) -> Result<DocFormat, Error> {
+    match s {
+        "docx" => Ok(DocFormat::Docx),
+        "md" | "markdown" => Ok(DocFormat::Markdown),
+        "html" => Ok(DocFormat::Html),
+        "rtf" => Ok(DocFormat::Rtf),
+        "odt" => Ok(DocFormat::Odt),
+        other => Err(Error::UnknownFormat {
+            name: other.to_owned(),
+        }),
+    }
+}
+
 // -----------------------------------------------------------------------------
 // WASM bridge
 // -----------------------------------------------------------------------------
@@ -259,7 +384,10 @@ fn byte_to_char_offset(text: &str, byte_offset: usize) -> usize {
 mod wasm_api {
     use wasm_bindgen::prelude::*;
 
-    use crate::{DocId, EditOp, Error, apply_op, close_doc, doc_text, open_docx, to_docx};
+    use crate::{
+        DocId, EditOp, Error, apply_op, close_doc, doc_text, open_doc, open_docx, parse_doc_format,
+        to_docx, to_format,
+    };
 
     fn err(e: Error) -> JsValue {
         JsValue::from_str(&e.to_string())
@@ -268,6 +396,24 @@ mod wasm_api {
     #[wasm_bindgen(js_name = openDocx)]
     pub fn js_open_docx(bytes: &[u8]) -> Result<u64, JsValue> {
         open_docx(bytes).map(DocId::raw).map_err(err)
+    }
+
+    /// Phase 5.6.2 — multi-format open. `format` is one of
+    /// `"docx"`, `"md"` (alias `"markdown"`), `"html"`, `"rtf"`,
+    /// `"odt"`. Unknown identifiers yield `Error::UnknownFormat`.
+    #[wasm_bindgen(js_name = openDoc)]
+    pub fn js_open_doc(bytes: &[u8], format: &str) -> Result<u64, JsValue> {
+        let fmt = parse_doc_format(format).map_err(err)?;
+        open_doc(bytes, fmt).map(DocId::raw).map_err(err)
+    }
+
+    /// Phase 5.6.2 — symmetric multi-format save. Returns the
+    /// serialised bytes for the requested format, or surfaces a
+    /// `FormatNotSupported` / `UnknownFormat` error.
+    #[wasm_bindgen(js_name = toFormat)]
+    pub fn js_to_format(doc_id: u64, format: &str) -> Result<Vec<u8>, JsValue> {
+        let fmt = parse_doc_format(format).map_err(err)?;
+        to_format(DocId::from_raw(doc_id), fmt).map_err(err)
     }
 
     #[wasm_bindgen(js_name = applyInsert)]
