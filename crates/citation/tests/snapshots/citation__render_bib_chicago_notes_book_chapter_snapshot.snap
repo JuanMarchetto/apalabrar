@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 189
+expression: bib
+---
+Smith, John. “Chapter on Metrics”. In <i>Handbook of Measurement</i>, Edith Editor. Elsevier, 2018.

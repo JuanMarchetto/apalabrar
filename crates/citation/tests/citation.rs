@@ -183,7 +183,6 @@ fn render_bib_ama_journal_article_snapshot() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_chicago_notes_book_chapter_snapshot() {
     let bib = render_bib(&[book_chapter()], "chicago-notes-bibliography")
         .expect("Chicago render must succeed");
@@ -235,7 +234,6 @@ fn render_inline_ama_is_superscript_numeric() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_inline_chicago_notes_is_full_footnote() {
     let cite = render_inline(&book_chapter(), "chicago-notes-bibliography")
         .expect("Chicago notes inline must succeed");

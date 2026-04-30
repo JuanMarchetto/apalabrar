@@ -32,7 +32,9 @@
 //! - 5 additional styles (Harvard + AMA-equivs + Nature + Science +
 //!   ACS) — Phase 5.2.1.
 
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
@@ -347,24 +349,55 @@ pub fn render_inline_with<F: OutputFormat>(
     Ok(ir::serialize(&tokens, format))
 }
 
-/// Parse a bundled style XML to AST. Phase 5.2-impl/renderer-1
-/// parses on every call; the thread-local cache lands in
-/// Phase 5.2-impl/locale.
-fn compile_style(id: &str) -> Result<ast::Style, Error> {
-    let xml = assets::style_xml(id).ok_or_else(|| Error::UnknownStyle(id.into()))?;
-    parser::parse_style(xml, id).map_err(|e| Error::MalformedStyle {
-        style: id.into(),
-        reason: e.to_string(),
+// ─────────────────────────────────────────────────────────────────
+// Thread-local compile cache
+// ─────────────────────────────────────────────────────────────────
+//
+// Phase 5.2-impl/locale: parsing a CSL XML is ~50ms cold (the APA
+// bundle is 86KB); a long bibliography render with the same style
+// would re-parse on every entry. Thread-local cache mirrors the
+// `SHAPING_CACHE` pattern in `apalabrar-layout`.
+
+thread_local! {
+    static STYLE_CACHE: RefCell<HashMap<String, Rc<ast::Style>>> =
+        RefCell::new(HashMap::new());
+    static LOCALE_CACHE: RefCell<HashMap<String, Rc<ast::Locale>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// Compile a bundled style XML to AST. First call per id parses and
+/// caches; subsequent calls return the cached `Rc` (zero-cost clone).
+fn compile_style(id: &str) -> Result<Rc<ast::Style>, Error> {
+    STYLE_CACHE.with(|cell| {
+        if let Some(s) = cell.borrow().get(id).cloned() {
+            return Ok(s);
+        }
+        let xml = assets::style_xml(id).ok_or_else(|| Error::UnknownStyle(id.into()))?;
+        let parsed = parser::parse_style(xml, id).map_err(|e| Error::MalformedStyle {
+            style: id.into(),
+            reason: e.to_string(),
+        })?;
+        let rc = Rc::new(parsed);
+        cell.borrow_mut().insert(id.to_string(), rc.clone());
+        Ok(rc)
     })
 }
 
-/// Parse a bundled locale XML to AST. Same caching note as
-/// `compile_style`.
-fn compile_locale(id: &str) -> Result<ast::Locale, Error> {
-    let xml = assets::locale_xml(id).ok_or_else(|| Error::UnknownLocale(id.into()))?;
-    parser::parse_locale(xml).map_err(|e| Error::MalformedLocale {
-        locale: id.into(),
-        reason: e.to_string(),
+/// Compile a bundled locale XML to AST. Same caching as
+/// [`compile_style`].
+fn compile_locale(id: &str) -> Result<Rc<ast::Locale>, Error> {
+    LOCALE_CACHE.with(|cell| {
+        if let Some(l) = cell.borrow().get(id).cloned() {
+            return Ok(l);
+        }
+        let xml = assets::locale_xml(id).ok_or_else(|| Error::UnknownLocale(id.into()))?;
+        let parsed = parser::parse_locale(xml).map_err(|e| Error::MalformedLocale {
+            locale: id.into(),
+            reason: e.to_string(),
+        })?;
+        let rc = Rc::new(parsed);
+        cell.borrow_mut().insert(id.to_string(), rc.clone());
+        Ok(rc)
     })
 }
 
