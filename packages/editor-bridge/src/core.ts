@@ -85,6 +85,28 @@ export interface ApalabrarCoreWasm {
   blockAt(docId: bigint, idx: number): string | undefined;
   bridgeDocText(docId: bigint): string;
   bridgeCloseDoc(docId: bigint): void;
+  /** Phase 4.5 — returns a JSON-encoded `MatchJson[]`. */
+  findInDoc(docId: bigint, needle: string, optsJson: string): string;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 4.5 — Find types
+// ─────────────────────────────────────────────────────────────────
+
+/** Search options. Matches the Rust `FindOptionsJson` serde shape. */
+export interface FindOptions {
+  caseSensitive: boolean;
+  wholeWord: boolean;
+}
+
+/**
+ * One match in the doc's plain-text projection. Half-open
+ * `[start, end)` in CODEPOINT units (NOT bytes), matching
+ * `Position`.
+ */
+export interface Match {
+  start: Position;
+  end: Position;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -138,5 +160,18 @@ export class ApalabrarCore {
   /// Restore a doc from a snapshot blob and return its handle.
   restoreFromSnapshot(snapshot: Uint8Array): CoreDocId {
     return this.wasm.restoreFromSnapshot(snapshot) as CoreDocId;
+  }
+
+  /**
+   * Find all non-overlapping matches of `needle` in the doc's
+   * plain-text projection. Returns codepoint ranges sorted ascending
+   * by `start`. An empty `needle` returns `[]`.
+   *
+   * Phase 4.5 — `regex` mode is deferred to v1; `caseSensitive` and
+   * `wholeWord` are the only supported flags.
+   */
+  find(id: CoreDocId, needle: string, opts: FindOptions): Match[] {
+    const json = this.wasm.findInDoc(id, needle, JSON.stringify(opts));
+    return JSON.parse(json) as Match[];
   }
 }

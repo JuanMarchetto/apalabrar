@@ -64,6 +64,13 @@ class WasmMock implements ApalabrarCoreWasm {
   bridgeCloseDoc(docId: bigint): void {
     this.record('bridgeCloseDoc', [docId]);
   }
+
+  findResultJson = '[]';
+
+  findInDoc(docId: bigint, needle: string, optsJson: string): string {
+    this.record('findInDoc', [docId, needle, optsJson]);
+    return this.findResultJson;
+  }
 }
 
 describe('ApalabrarCore', () => {
@@ -315,6 +322,40 @@ describe('ApalabrarCore', () => {
       const id = core.createDoc();
       // No entry in blockJsonByIdx → mock returns undefined.
       expect(core.blockAt(id, 999)).toBeNull();
+    });
+  });
+
+  describe('find (Phase 4.5)', () => {
+    it('passes needle + JSON-stringified opts to wasm and parses the response', () => {
+      const wasm = new WasmMock();
+      // Mock returns a known JSON match list — Core must parse it back.
+      wasm.findResultJson = JSON.stringify([
+        { start: 0, end: 5 },
+        { start: 12, end: 17 },
+      ]);
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      const matches = core.find(id, 'hello', { caseSensitive: true, wholeWord: false });
+      expect(matches).toEqual([
+        { start: 0, end: 5 },
+        { start: 12, end: 17 },
+      ]);
+      const call = wasm.log.find((c) => c.fn === 'findInDoc');
+      expect(call?.args[1]).toBe('hello');
+      // Opts must travel as JSON, not [object Object].
+      expect(JSON.parse(call?.args[2] as string)).toEqual({
+        caseSensitive: true,
+        wholeWord: false,
+      });
+    });
+
+    it('returns an empty array when the wasm side returns "[]"', () => {
+      const wasm = new WasmMock();
+      wasm.findResultJson = '[]';
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      const matches = core.find(id, 'nothing', { caseSensitive: false, wholeWord: false });
+      expect(matches).toEqual([]);
     });
   });
 

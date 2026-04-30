@@ -9,6 +9,7 @@ use thiserror::Error;
 
 pub mod bridge;
 pub mod dispatch;
+pub mod find;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -167,6 +168,26 @@ pub fn doc_text(doc_id: DocId) -> Result<String, Error> {
         .expect("registry mutex must not be poisoned");
     let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
     Ok(entry.doc.text())
+}
+
+/// Find all non-overlapping occurrences of `needle` in the doc's
+/// plain-text projection. Returns codepoint ranges (matching
+/// [`apalabrar_doc_model::Position`]).
+///
+/// Phase 4.5: this wraps [`find::find`] against the registry. The
+/// jumprope substring-search optimisation lands in step 5 (polish)
+/// once the engine is GREEN.
+pub fn find(
+    doc_id: DocId,
+    needle: &str,
+    opts: find::FindOptions,
+) -> Result<Vec<find::Match>, Error> {
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let text = entry.doc.text();
+    Ok(find::find(&text, needle, opts))
 }
 
 /// Drop a document from the registry.

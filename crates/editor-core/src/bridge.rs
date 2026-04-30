@@ -34,8 +34,9 @@
 //! shape, different encoder.
 
 use apalabrar_doc_model::{Doc, EditOp};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
+use crate::find;
 use crate::{DocId, Document, Error, allocate_id, registry};
 
 /// Create a fresh empty document and return an opaque handle.
@@ -128,6 +129,60 @@ pub fn block_at_json(doc_id: DocId, idx: usize) -> Result<Option<String>, Error>
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Phase 4.5 — Find (JSON wrapper for the wasm bridge)
+// ─────────────────────────────────────────────────────────────────
+
+/// JSON shape for [`find::FindOptions`] on the wire.
+/// Matches the TypeScript `FindOptions` interface in
+/// `packages/editor-bridge/src/core.ts`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct FindOptionsJson {
+    #[serde(rename = "caseSensitive")]
+    pub case_sensitive: bool,
+    #[serde(rename = "wholeWord")]
+    pub whole_word: bool,
+}
+
+impl From<FindOptionsJson> for find::FindOptions {
+    fn from(j: FindOptionsJson) -> Self {
+        Self {
+            case_sensitive: j.case_sensitive,
+            whole_word: j.whole_word,
+        }
+    }
+}
+
+/// JSON shape for one [`find::Match`] on the wire. `start` and `end`
+/// are CODEPOINT indices, half-open `[start, end)`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MatchJson {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl From<find::Match> for MatchJson {
+    fn from(m: find::Match) -> Self {
+        Self {
+            start: m.start,
+            end: m.end,
+        }
+    }
+}
+
+/// Find all non-overlapping matches; return them as a JSON array.
+/// Errors propagate as [`Error::JsonParseFailed`] (malformed
+/// `opts_json`) or [`Error::UnknownDoc`] (registry miss).
+pub fn find_json(doc_id: DocId, needle: &str, opts_json: &str) -> Result<String, Error> {
+    let opts: FindOptionsJson =
+        serde_json::from_str(opts_json).map_err(|e| Error::JsonParseFailed {
+            reason: e.to_string(),
+        })?;
+    let matches = crate::find(doc_id, needle, opts.into())?;
+    let json: Vec<MatchJson> = matches.into_iter().map(MatchJson::from).collect();
+    Ok(serde_json::to_string(&json).expect("Vec<MatchJson> serialises without error"))
+}
+
 /// Test-only escape hatch: borrow the underlying `Doc` to read
 /// transient state (eg. `last_suggestion_id`) that isn't yet exposed
 /// through dedicated bridge accessors. Public so integration tests
@@ -183,7 +238,8 @@ mod wasm_api {
     use wasm_bindgen::prelude::*;
 
     use crate::bridge::{
-        apply_edit_op_json, block_at_json, block_count, create_doc, restore_from_snapshot, snapshot,
+        apply_edit_op_json, block_at_json, block_count, create_doc, find_json,
+        restore_from_snapshot, snapshot,
     };
     use crate::{DocId, Error, close_doc, doc_text};
 
@@ -229,5 +285,10 @@ mod wasm_api {
     #[wasm_bindgen(js_name = bridgeCloseDoc)]
     pub fn js_close_doc(doc_id: u64) -> Result<(), JsValue> {
         close_doc(DocId(doc_id)).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = findInDoc)]
+    pub fn js_find_in_doc(doc_id: u64, needle: &str, opts_json: &str) -> Result<String, JsValue> {
+        find_json(DocId(doc_id), needle, opts_json).map_err(err)
     }
 }

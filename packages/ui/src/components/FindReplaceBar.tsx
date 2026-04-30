@@ -16,23 +16,23 @@ export interface FindReplaceBarProps {
   /** Current replace text. */
   replaceQuery: string;
   /** Current match index (0-based). Undefined when no match focused. */
-  currentMatch?: number;
+  currentMatch?: number | undefined;
   /** Total match count for findQuery. */
   matchCount: number;
   caseSensitive: boolean;
   wholeWord: boolean;
 
-  onFindQueryChange?: (query: string) => void;
-  onReplaceQueryChange?: (query: string) => void;
-  onCaseSensitiveChange?: (caseSensitive: boolean) => void;
-  onWholeWordChange?: (wholeWord: boolean) => void;
-  onNext?: () => void;
-  onPrev?: () => void;
-  onReplace?: () => void;
-  onReplaceAll?: () => void;
-  onClose?: () => void;
+  onFindQueryChange?: ((query: string) => void) | undefined;
+  onReplaceQueryChange?: ((query: string) => void) | undefined;
+  onCaseSensitiveChange?: ((caseSensitive: boolean) => void) | undefined;
+  onWholeWordChange?: ((wholeWord: boolean) => void) | undefined;
+  onNext?: (() => void) | undefined;
+  onPrev?: (() => void) | undefined;
+  onReplace?: (() => void) | undefined;
+  onReplaceAll?: (() => void) | undefined;
+  onClose?: (() => void) | undefined;
 
-  class?: string;
+  class?: string | undefined;
 }
 
 const rootClass =

@@ -58,7 +58,9 @@ export {
   type BlockTree,
   type CoreDocId,
   type EditOp,
+  type FindOptions,
   type Mark,
+  type Match,
   type Position,
 } from './core';
 

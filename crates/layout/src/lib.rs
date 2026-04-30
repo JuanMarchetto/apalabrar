@@ -208,6 +208,110 @@ impl RenderPlan {
     }
 }
 
+/// Resolve a doc-level codepoint range against an already-laid-out
+/// [`RenderPlan`] into per-line bounding rects in **page-local**
+/// coordinates (origin = top-left of the page's printable area).
+///
+/// `doc_text` must be the same string the plan was laid out from —
+/// boundary positions (block start/end) are derived from `\n` count.
+/// `range` is half-open `[start, end)` in codepoints, matching
+/// [`apalabrar_doc_model::Position`] and [`apalabrar_editor_core::find::Match`].
+///
+/// One [`Rect`] is emitted per shaped line that the range overlaps.
+/// A range that spans pages produces rects across the corresponding
+/// pages; the caller can group by page using each rect's parent
+/// `BlockBox` lookup. (Phase 4.5 v0 returns flat `Vec<Rect>` for
+/// simplicity; per-page grouping is a JS-side concern.)
+///
+/// Edge cases:
+/// - Empty range (`start == end`) → `vec![]`.
+/// - Range past end-of-doc → clipped to doc length.
+/// - Range entirely inside a `\n` boundary → `vec![]` (no glyph).
+///
+/// Phase 4.5 — used by the editor surface to paint find-highlights
+/// and the eventual selection overlay without re-running [`layout`].
+pub fn resolve_selection(plan: &RenderPlan, doc_text: &str, range: Range<usize>) -> Vec<Rect> {
+    let doc_len = doc_text.chars().count();
+    let start = range.start.min(doc_len);
+    let end = range.end.min(doc_len).max(start);
+    if start == end {
+        return Vec::new();
+    }
+
+    // Codepoint position where each block starts in `doc_text`.
+    // Block 0 starts at 0; block N starts at one-past the Nth `\n`.
+    let mut block_starts: Vec<usize> = vec![0];
+    for (i, ch) in doc_text.chars().enumerate() {
+        if ch == '\n' {
+            block_starts.push(i + 1);
+        }
+    }
+    let block_count = block_starts.len();
+
+    // Block end (exclusive of the `\n`). Last block runs to doc end.
+    let block_end = |idx: usize| -> usize {
+        if idx + 1 < block_count {
+            block_starts[idx + 1] - 1
+        } else {
+            doc_len
+        }
+    };
+
+    let mut rects = Vec::new();
+
+    for page in &plan.pages {
+        for block_box in &page.blocks {
+            let bidx = block_box.block_index;
+            if bidx >= block_count {
+                continue;
+            }
+            let bs = block_starts[bidx];
+            let be = block_end(bidx);
+            // Intersect [start, end) with [bs, be) in doc-level coords.
+            let lo = start.max(bs);
+            let hi = end.min(be);
+            if lo >= hi {
+                continue;
+            }
+            // Block-local codepoint offsets — what the glyphs' cluster
+            // ranges are indexed against.
+            let local_lo = (lo - bs) as u32;
+            let local_hi = (hi - bs) as u32;
+
+            for (line_offset, line) in block_box.lines.iter().enumerate() {
+                let abs_line = block_box.line_range.start + line_offset;
+                let Some(run) = plan
+                    .glyph_runs
+                    .iter()
+                    .find(|gr| gr.block_index == bidx && gr.line_index == abs_line)
+                else {
+                    continue;
+                };
+                // Glyphs whose cluster overlaps [local_lo, local_hi).
+                let mut min_x = f32::INFINITY;
+                let mut max_x = f32::NEG_INFINITY;
+                for g in &run.glyphs {
+                    if g.cluster_start < local_hi && g.cluster_end > local_lo {
+                        min_x = min_x.min(g.x_px);
+                        max_x = max_x.max(g.x_px + g.width_px);
+                    }
+                }
+                if !min_x.is_finite() || max_x <= min_x {
+                    continue;
+                }
+                rects.push(Rect {
+                    x_px: block_box.origin_x_px + min_x,
+                    y_px: block_box.origin_y_px + (line.baseline_y_px - line.height_px),
+                    width_px: max_x - min_x,
+                    height_px: line.height_px,
+                });
+            }
+        }
+    }
+
+    rects
+}
+
 /// Lay out `doc` against `viewport` with default pagination rules.
 /// Equivalent to [`layout_with_config`] passing
 /// [`PaginationConfig::default`].
