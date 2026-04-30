@@ -1,0 +1,15 @@
+[package]
+name = "plugin-full-fixture"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+description = "Test fixture plugin exercising all 4 capabilities."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.34"

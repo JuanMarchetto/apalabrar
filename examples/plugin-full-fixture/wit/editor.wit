@@ -1,0 +1,51 @@
+// Apalabrar plugin contract — Phase 5.3.
+//
+// Four capability families: doc.read, doc.write, ui.panel, net.http.
+// Each is a WIT interface that the host imports into the plugin's
+// Component instance only when the Grants set explicitly allows it.
+// An ungranted capability is *absent* from the Linker — calling it
+// fails at instantiation as `Error::CapabilityDenied`.
+//
+// All record-shaped types were collapsed to primitives + tuples so
+// the host can `func_wrap` without requiring `#[derive(ComponentType)]`
+// on Rust mirror structs. Future versions may expand to records.
+
+package apalabrar:editor@0.1.0;
+
+interface doc {
+    /// Read the full document text. Granted by `Capability::DocRead`.
+    read: func() -> string;
+}
+
+interface doc-mut {
+    /// Replace the full document text. Granted by `Capability::DocWrite`.
+    write: func(text: string);
+}
+
+interface ui {
+    /// Register a panel with the editor shell. The host stores the
+    /// (title, content) pair; tests assert on the registry.
+    /// Granted by `Capability::UiPanel`.
+    register-panel: func(title: string, content: string);
+}
+
+interface net {
+    /// Issue an HTTP request through the host adapter.
+    /// Returns the response body string on success, error string on
+    /// failure. Status code is encoded in the success body for v0.1.
+    /// Granted by `Capability::NetHttp`.
+    request: func(url: string, method: string) -> result<string, string>;
+}
+
+interface plugin {
+    /// Plugin entry point invoked once after instantiation.
+    run: func();
+}
+
+world apalabrar-plugin {
+    import doc;
+    import doc-mut;
+    import ui;
+    import net;
+    export plugin;
+}

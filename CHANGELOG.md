@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 5.3 — plugin host (capability-sandboxed WASM Component
+  loader). `crates/plugin-host` ships `Host`, `Plugin`, `Grants`,
+  `Capability` (DocRead / DocWrite / UiPanel / NetHttp), `Quota`,
+  and `Manifest`. Four-capability WIT contract in
+  `crates/plugin-host/wit/editor.wit`. Reference plugins in
+  `examples/plugin-word-counter/` (production-shaped, exercises
+  doc-read + ui-panel) and `examples/plugin-full-fixture/`
+  (test-only, exercises all four imports). Tests cover capability
+  gating at link time, fuel-exhaustion + memory-limit enforcement,
+  plugin isolation, manifest validation, and a real word-counter
+  end-to-end run. Targets: 98.6% line coverage on the host crate
+  and 95.8% mutation kill rate (1 surviving mutant is an
+  equivalent default-vs-empty-Grants substitution). Built on
+  `wasmtime 26` with `wit-bindgen 0.34` for the guest plugins.
+
+- Phase 5.2-polish-2 — citation renderer mutation-survivor sweep.
+  New `crates/citation/tests/renderer_polish.rs` adds 23 tests
+  driving renderer branches that the 10 bundled styles do not
+  reach: `english_ordinal_suffix` (1st/2nd/3rd/4th plus the
+  11th/12th/13th edge cases and 21st/22nd/23rd boundary),
+  `resolve_variable` arms (page-first, ISBN, edition, abstract,
+  id, citation-key, type, title), `variable_present` from
+  `<if variable="…"/>` for author/editor/translator, and
+  `evaluate_conditions` position arms (first / subsequent). Each
+  test feeds a custom inline CSL XML through `parse_style` +
+  `render_layout`, bypassing the bundled-style cache.
+
 - Phase 4 prompt 4.4 — Solid UI shell (toolbar + sidebars + modal +
   styleguide). `@apalabrar/ui` ships seven controlled, presentational
   components: `KobalteModal` (Dialog wrapper), `WordClassicToggle`

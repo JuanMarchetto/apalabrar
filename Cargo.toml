@@ -12,6 +12,8 @@ members = [
     "crates/format-rtf",
     "crates/layout",
     "crates/plugin-host",
+    "examples/plugin-full-fixture",
+    "examples/plugin-word-counter",
 ]
 
 [workspace.package]
