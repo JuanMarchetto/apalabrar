@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 544
+expression: cite
+---
+(<i>1</i>)

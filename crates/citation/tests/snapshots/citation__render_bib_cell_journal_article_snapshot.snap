@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 516
+expression: bib
+---
+1.Smith, J. (2020). On the nature of typesetting. J. Typogr. <i>12</i>, 123-145. https://doi.org/10.1000/typo.2020.12345.

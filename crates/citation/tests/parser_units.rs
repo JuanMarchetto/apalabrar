@@ -1060,3 +1060,552 @@ fn parse_self_closing_date_inside_layout() {
     assert_eq!(d.variable, "issued");
     assert_eq!(d.form, Some(DateForm::Text));
 }
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 5.2-polish: targeted branch coverage for parser
+// ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn parse_in_style_self_closing_locale_override_attaches_to_style() {
+    // <locale xml:lang="es-ES"/> as a *self-closing* override inside
+    // <style>. Exercises parse_style_inner Event::Empty branch.
+    let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+      <citation><layout><text value="x"/></layout></citation>
+      <locale xml:lang="es-ES"/>
+    </style>"#;
+    let s = parse_style(xml, "x").unwrap();
+    assert_eq!(s.locale_overrides.len(), 1);
+    assert_eq!(s.locale_overrides[0].lang.as_deref(), Some("es-ES"));
+    assert!(s.locale_overrides[0].terms.is_empty());
+}
+
+#[test]
+fn parse_citation_skips_unknown_child_element() {
+    // Unknown <citation> child like <future-thing> must not break parsing.
+    let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+      <citation>
+        <future-thing><nested/></future-thing>
+        <layout><text value="ok"/></layout>
+      </citation>
+    </style>"#;
+    let s = parse_style(xml, "x").unwrap();
+    assert_eq!(s.citation.layout.body.len(), 1);
+}
+
+#[test]
+fn parse_bibliography_skips_unknown_child_element() {
+    let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+      <citation><layout/></citation>
+      <bibliography>
+        <unknown-block><deeply><nested/></deeply></unknown-block>
+        <layout><text value="bib"/></layout>
+      </bibliography>
+    </style>"#;
+    let s = parse_style(xml, "x").unwrap();
+    let bib = s.bibliography.expect("bibliography");
+    assert_eq!(bib.layout.body.len(), 1);
+}
+
+#[test]
+fn parse_layout_body_skips_unknown_start_element() {
+    // <unknown> inside layout must not break — parser skips it.
+    let s = parse_style(
+        &wrap_style(r#"<unknown-elem><inner/></unknown-elem><text value="kept"/>"#),
+        "x",
+    )
+    .unwrap();
+    assert_eq!(s.citation.layout.body.len(), 1);
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let TextSource::Value(v) = &t.source else {
+        panic!()
+    };
+    assert_eq!(v, "kept");
+}
+
+#[test]
+fn parse_layout_body_skips_unknown_self_closing_element() {
+    // Empty unknown like <self-closing-thing/> hits the Empty `_ => {}` arm.
+    let s = parse_style(
+        &wrap_style(r#"<self-closing-thing/><text value="kept"/>"#),
+        "x",
+    )
+    .unwrap();
+    assert_eq!(s.citation.layout.body.len(), 1);
+}
+
+#[test]
+fn parse_layout_body_text_with_explicit_close_tag() {
+    // <text variable="title"></text> — Start variant of the Text branch
+    // (rather than the typical self-closing Empty form).
+    let s = parse_style(&wrap_style(r#"<text variable="title"></text>"#), "x").unwrap();
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let TextSource::Variable(v) = &t.source else {
+        panic!()
+    };
+    assert_eq!(v, "title");
+}
+
+#[test]
+fn parse_layout_body_number_with_explicit_close_tag() {
+    let s = parse_style(&wrap_style(r#"<number variable="volume"></number>"#), "x").unwrap();
+    let Element::Number(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(n.variable, "volume");
+}
+
+#[test]
+fn parse_layout_body_label_with_explicit_close_tag() {
+    let s = parse_style(&wrap_style(r#"<label variable="page"></label>"#), "x").unwrap();
+    let Element::Label(lbl) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(lbl.variable.as_deref(), Some("page"));
+}
+
+#[test]
+fn parse_choose_skips_unknown_child_element() {
+    // Inside <choose>, anything other than if/else-if/else is skipped.
+    let s = parse_style(
+        &wrap_style(
+            r#"<choose>
+                 <unknown-branch><inner/></unknown-branch>
+                 <if variable="author"><text value="has-author"/></if>
+                 <else><text value="no-author"/></else>
+               </choose>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Choose(c) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(c.branches.len(), 1);
+    assert_eq!(c.else_body.len(), 1);
+}
+
+#[test]
+fn parse_choose_with_self_closing_else_branch_is_empty_body() {
+    // <else/> self-closing — exercises the Empty b"else" => {} arm.
+    let s = parse_style(
+        &wrap_style(
+            r#"<choose>
+                 <if variable="author"><text value="a"/></if>
+                 <else/>
+               </choose>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Choose(c) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(c.branches.len(), 1);
+    assert!(c.else_body.is_empty());
+}
+
+#[test]
+fn parse_choose_with_self_closing_unknown_is_ignored() {
+    // <unknown/> self-closing inside <choose> hits the Empty unknown arm.
+    let s = parse_style(
+        &wrap_style(
+            r#"<choose>
+                 <unknown-empty/>
+                 <if variable="author"><text value="x"/></if>
+               </choose>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Choose(c) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(c.branches.len(), 1);
+}
+
+#[test]
+fn parse_names_skips_unknown_self_closing_child() {
+    // <names> with a self-closing unknown child: hits the Empty `_ => {}`.
+    let s = parse_style(
+        &wrap_style(
+            r#"<names variable="author">
+                 <unknown-empty-thing/>
+                 <name form="long"/>
+               </names>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Names(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert!(n.name.is_some());
+}
+
+#[test]
+fn parse_names_skips_unknown_start_child() {
+    let s = parse_style(
+        &wrap_style(
+            r#"<names variable="author">
+                 <unknown-start><nested/></unknown-start>
+                 <name form="long"/>
+               </names>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Names(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert!(n.name.is_some());
+}
+
+#[test]
+fn parse_names_with_explicit_close_et_al() {
+    // <et-al ...></et-al> as a Start (not Empty) — exercises that branch.
+    let s = parse_style(
+        &wrap_style(
+            r#"<names variable="author">
+                 <name form="long"/>
+                 <et-al term="and-others" font-style="italic"></et-al>
+               </names>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Names(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let et = n.et_al.as_ref().expect("et-al");
+    assert_eq!(et.term.as_deref(), Some("and-others"));
+    assert_eq!(et.formatting.font_style, Some(FontStyle::Italic));
+}
+
+#[test]
+fn parse_names_with_explicit_close_label() {
+    let s = parse_style(
+        &wrap_style(
+            r#"<names variable="editor">
+                 <name form="long"/>
+                 <label variable="editor" form="short"></label>
+               </names>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Names(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let lbl = n.label.as_ref().expect("names>label");
+    assert_eq!(lbl.form.as_deref(), Some("short"));
+}
+
+#[test]
+fn parse_name_with_explicit_close_name_part() {
+    // <name-part name="family">...</name-part> Start form (vs self-close).
+    let s = parse_style(
+        &wrap_style(
+            r#"<names variable="author">
+                 <name form="long">
+                   <name-part name="family" font-weight="bold"></name-part>
+                 </name>
+               </names>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Names(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let name = n.name.as_ref().expect("name");
+    assert_eq!(name.name_parts.len(), 1);
+    assert_eq!(
+        name.name_parts[0].formatting.font_weight,
+        Some(FontWeight::Bold)
+    );
+}
+
+#[test]
+fn parse_name_skips_unknown_child() {
+    // <name> with an unknown nested element is silently skipped.
+    let s = parse_style(
+        &wrap_style(
+            r#"<names variable="author">
+                 <name form="long">
+                   <unknown-name-child><nested/></unknown-name-child>
+                   <name-part name="given" font-style="italic"/>
+                 </name>
+               </names>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Names(n) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let name = n.name.as_ref().expect("name");
+    assert_eq!(name.name_parts.len(), 1);
+}
+
+#[test]
+fn parse_date_with_explicit_close_date_part() {
+    // <date-part name="year">...</date-part> Start variant.
+    let s = parse_style(
+        &wrap_style(
+            r#"<date variable="issued" form="text">
+                 <date-part name="year" suffix=", "></date-part>
+                 <date-part name="month"/>
+               </date>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Date(d) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(d.date_parts.len(), 2);
+    assert_eq!(d.date_parts[0].suffix.as_deref(), Some(", "));
+}
+
+#[test]
+fn parse_date_skips_unknown_child() {
+    let s = parse_style(
+        &wrap_style(
+            r#"<date variable="issued" form="text">
+                 <unknown-date-child><nested/></unknown-date-child>
+                 <date-part name="year"/>
+               </date>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Date(d) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(d.date_parts.len(), 1);
+}
+
+#[test]
+fn parse_date_part_with_unknown_name_is_dropped() {
+    // <date-part name="century"/> — name not in {year,month,day} → None.
+    let s = parse_style(
+        &wrap_style(
+            r#"<date variable="issued" form="text">
+                 <date-part name="century"/>
+                 <date-part name="year"/>
+               </date>"#,
+        ),
+        "x",
+    )
+    .unwrap();
+    let Element::Date(d) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert_eq!(d.date_parts.len(), 1);
+    assert_eq!(d.date_parts[0].name, DatePartName::Year);
+}
+
+#[test]
+fn parse_sort_with_start_variant_keys() {
+    // <sort><key macro="...">...</key></sort> — Start (not Empty) variant.
+    let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+      <citation>
+        <sort>
+          <key macro="author"></key>
+          <key variable="issued" sort="descending"/>
+        </sort>
+        <layout><text value="x"/></layout>
+      </citation>
+    </style>"#;
+    let s = parse_style(xml, "x").unwrap();
+    assert_eq!(s.citation.sort.len(), 2);
+    let SortSource::Macro(m) = &s.citation.sort[0].source else {
+        panic!()
+    };
+    assert_eq!(m, "author");
+    assert!(s.citation.sort[1].sort_descending);
+}
+
+#[test]
+fn parse_sort_skips_unknown_start_child() {
+    let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+      <citation>
+        <sort>
+          <unknown-sort-child><nested/></unknown-sort-child>
+          <key variable="author"/>
+        </sort>
+        <layout/>
+      </citation>
+    </style>"#;
+    let s = parse_style(xml, "x").unwrap();
+    assert_eq!(s.citation.sort.len(), 1);
+}
+
+#[test]
+fn parse_sort_key_without_variable_or_macro_is_dropped() {
+    // <key sort="ascending"/> — neither variable nor macro → None.
+    let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0">
+      <citation>
+        <sort>
+          <key sort="ascending"/>
+          <key variable="issued"/>
+        </sort>
+        <layout/>
+      </citation>
+    </style>"#;
+    let s = parse_style(xml, "x").unwrap();
+    assert_eq!(s.citation.sort.len(), 1);
+    let SortSource::Variable(v) = &s.citation.sort[0].source else {
+        panic!()
+    };
+    assert_eq!(v, "issued");
+}
+
+#[test]
+fn parse_locale_with_style_options_start_form() {
+    // <style-options>...</style-options> as Start variant inside locale.
+    let xml = r#"<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
+      <style-options punctuation-in-quote="true" limit-day-ordinals-to-day-1="true"></style-options>
+    </locale>"#;
+    let l = parse_locale(xml).unwrap();
+    assert!(l.style_options.punctuation_in_quote);
+    assert!(l.style_options.limit_day_ordinals_to_day_1);
+}
+
+#[test]
+fn parse_locale_skips_date_with_unsupported_form() {
+    // <date form="something-else"/> inside locale must be skipped, not crash.
+    let xml = r#"<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
+      <date form="custom-form"><date-part name="year"/></date>
+      <date form="text"><date-part name="year"/></date>
+    </locale>"#;
+    let l = parse_locale(xml).unwrap();
+    assert!(l.date_text.is_some());
+    assert!(l.date_numeric.is_none());
+}
+
+#[test]
+fn parse_locale_skips_unknown_child() {
+    let xml = r#"<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
+      <unknown-locale-child><nested/></unknown-locale-child>
+      <terms><term name="and">y</term></terms>
+    </locale>"#;
+    let l = parse_locale(xml).unwrap();
+    assert_eq!(l.terms.len(), 1);
+    assert_eq!(l.terms[0].name, "and");
+}
+
+#[test]
+fn parse_terms_skips_unknown_start_child() {
+    let xml = r#"<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
+      <terms>
+        <unknown-term-thing><nested/></unknown-term-thing>
+        <term name="and">and</term>
+      </terms>
+    </locale>"#;
+    let l = parse_locale(xml).unwrap();
+    assert_eq!(l.terms.len(), 1);
+}
+
+#[test]
+fn parse_term_body_skips_unknown_child_element() {
+    // <term> can contain text or <single>/<multiple>; anything else skipped.
+    let xml = r#"<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
+      <terms>
+        <term name="page"><unknown-inner/><single>page</single><multiple>pages</multiple></term>
+      </terms>
+    </locale>"#;
+    let l = parse_locale(xml).unwrap();
+    assert_eq!(l.terms.len(), 1);
+    let TermBody::Plural { single, multiple } = &l.terms[0].body else {
+        panic!("expected plural body")
+    };
+    assert_eq!(single, "page");
+    assert_eq!(multiple, "pages");
+}
+
+#[test]
+fn parse_locale_with_self_closing_style_options() {
+    // <style-options .../> — Empty variant (already covered by some
+    // upstream tests, but pin it here explicitly).
+    let xml = r#"<locale xmlns="http://purl.org/net/xbiblio/csl" version="1.0" xml:lang="en-US">
+      <style-options punctuation-in-quote="true"/>
+    </locale>"#;
+    let l = parse_locale(xml).unwrap();
+    assert!(l.style_options.punctuation_in_quote);
+    assert!(!l.style_options.limit_day_ordinals_to_day_1);
+}
+
+#[test]
+fn parse_handles_attribute_with_xml_entities() {
+    // Unescape on attr round-trip — confirms unescape_xml runs.
+    let s = parse_style(
+        &wrap_style(r#"<text value="&amp;&lt;&gt;&quot;&apos;"/>"#),
+        "x",
+    )
+    .unwrap();
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    let TextSource::Value(v) = &t.source else {
+        panic!()
+    };
+    assert_eq!(v, "&<>\"'");
+}
+
+#[test]
+fn parse_text_unknown_text_case_value_is_none() {
+    // Unknown text-case attr falls through to None (forward-compat).
+    let s = parse_style(
+        &wrap_style(r#"<text variable="title" text-case="zalgo-case"/>"#),
+        "x",
+    )
+    .unwrap();
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert!(t.text_case.is_none());
+}
+
+#[test]
+fn parse_text_unknown_font_variant_value_is_none() {
+    let s = parse_style(
+        &wrap_style(r#"<text variable="title" font-variant="zalgo"/>"#),
+        "x",
+    )
+    .unwrap();
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert!(t.formatting.font_variant.is_none());
+}
+
+#[test]
+fn parse_text_unknown_font_weight_value_is_none() {
+    let s = parse_style(
+        &wrap_style(r#"<text variable="title" font-weight="ultraheavy"/>"#),
+        "x",
+    )
+    .unwrap();
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert!(t.formatting.font_weight.is_none());
+}
+
+#[test]
+fn parse_text_unknown_font_style_value_is_none() {
+    let s = parse_style(
+        &wrap_style(r#"<text variable="title" font-style="cursed"/>"#),
+        "x",
+    )
+    .unwrap();
+    let Element::Text(t) = first_layout_elem(&s) else {
+        panic!()
+    };
+    assert!(t.formatting.font_style.is_none());
+}

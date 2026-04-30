@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 530
+expression: cite
+---
+(Smith, 2020)

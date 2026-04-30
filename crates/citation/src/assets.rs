@@ -10,6 +10,11 @@ const IEEE: &str = include_str!("../assets/styles/ieee.csl");
 const MLA: &str = include_str!("../assets/styles/mla.csl");
 const AMA: &str = include_str!("../assets/styles/ama.csl");
 const CHICAGO: &str = include_str!("../assets/styles/chicago-notes-bibliography.csl");
+const HARVARD: &str = include_str!("../assets/styles/harvard.csl");
+const NATURE: &str = include_str!("../assets/styles/nature.csl");
+const SCIENCE: &str = include_str!("../assets/styles/science.csl");
+const CELL: &str = include_str!("../assets/styles/cell.csl");
+const PLOS: &str = include_str!("../assets/styles/plos.csl");
 
 const EN_US: &str = include_str!("../assets/locales/locales-en-US.xml");
 const EN_GB: &str = include_str!("../assets/locales/locales-en-GB.xml");
@@ -28,6 +33,11 @@ pub fn style_xml(id: &str) -> Option<&'static str> {
         "mla" => Some(MLA),
         "ama" => Some(AMA),
         "chicago-notes-bibliography" => Some(CHICAGO),
+        "harvard" => Some(HARVARD),
+        "nature" => Some(NATURE),
+        "science" => Some(SCIENCE),
+        "cell" => Some(CELL),
+        "plos" => Some(PLOS),
         _ => None,
     }
 }
@@ -51,7 +61,18 @@ pub fn locale_xml(lang: &str) -> Option<&'static str> {
 /// Iterator over the bundled style ids — useful for diagnostics
 /// and `cargo doc` listings.
 pub fn bundled_style_ids() -> &'static [&'static str] {
-    &["apa", "ieee", "mla", "ama", "chicago-notes-bibliography"]
+    &[
+        "apa",
+        "ieee",
+        "mla",
+        "ama",
+        "chicago-notes-bibliography",
+        "harvard",
+        "nature",
+        "science",
+        "cell",
+        "plos",
+    ]
 }
 
 /// Iterator over the bundled locale ids.

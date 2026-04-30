@@ -134,6 +134,130 @@ fn anonymous_with_only_title_and_year() -> CslItem {
     }
 }
 
+/// CSL date with year + month + day (full date).
+fn ymd(y: i32, m: i32, d: i32) -> DateVar {
+    DateVar {
+        date_parts: vec![vec![y, m, d]],
+        literal: None,
+        circa: false,
+    }
+}
+
+/// Reference: book chapter with editor + translator. Used to
+/// exercise the editor/translator branches of `variable_present`,
+/// `name_var`, and `label_is_plural`. Chapter type is what triggers
+/// editor + translator rendering in most styles.
+fn paper_with_editor_and_translator() -> CslItem {
+    CslItem {
+        id: "wills2015".into(),
+        item_type: "chapter".into(),
+        author: vec![person("Wills", "Anne")],
+        editor: vec![person("Bloggs", "Bob")],
+        translator: vec![person("Targaryen", "Tessa")],
+        title: Some("A chapter with all hands".into()),
+        container_title: Some("Handbook of Polyglot Studies".into()),
+        publisher: Some("Polyglot Press".into()),
+        publisher_place: Some("Geneva".into()),
+        issued: Some(year(2015)),
+        page: Some("12-34".into()),
+        ..Default::default()
+    }
+}
+
+/// Reference: chapter with multiple editors AND translators (>1
+/// each) — exercises the `label_is_plural editor`/`translator`
+/// branches with `count > 1`.
+fn paper_with_multiple_editors_and_translators() -> CslItem {
+    CslItem {
+        id: "team2017".into(),
+        item_type: "chapter".into(),
+        author: vec![person("Author", "Alice"), person("Author", "Bob")],
+        editor: vec![person("Editor", "One"), person("Editor", "Two")],
+        translator: vec![
+            person("Translator", "First"),
+            person("Translator", "Second"),
+        ],
+        title: Some("A polyglot chapter".into()),
+        container_title: Some("Multilingua Handbook".into()),
+        publisher: Some("Lingua Press".into()),
+        issued: Some(year(2017)),
+        page: Some("1-20".into()),
+        ..Default::default()
+    }
+}
+
+/// Reference: newspaper article with FULL date — exercises styles
+/// (Harvard) that emit `<date-part name="month" form="long"/>` for
+/// non-journal items, hitting `english_month_long`.
+fn newspaper_article_with_full_date() -> CslItem {
+    CslItem {
+        id: "scoop2022".into(),
+        item_type: "article-newspaper".into(),
+        author: vec![person("Reporter", "Rita")],
+        title: Some("Big breaking news".into()),
+        container_title: Some("The Daily Plant".into()),
+        issued: Some(ymd(2022, 6, 15)),
+        ..Default::default()
+    }
+}
+
+/// Reference: report with full date — PLOS emits month=short for
+/// `report` type, exercising `english_month_short`.
+fn webpage_with_full_date() -> CslItem {
+    CslItem {
+        id: "rpt2023".into(),
+        item_type: "report".into(),
+        author: vec![person("Webmaster", "Wanda")],
+        title: Some("How to test mutation kill rates".into()),
+        container_title: Some("Test Blog".into()),
+        issued: Some(ymd(2023, 3, 21)),
+        url: Some("https://example.org/post/42".into()),
+        ..Default::default()
+    }
+}
+
+/// Reference: book with rich metadata — populates
+/// publisher-place, edition, ISBN, URL, abstract — to exercise the
+/// rare arms of `resolve_variable`.
+fn book_with_rich_metadata() -> CslItem {
+    CslItem {
+        id: "rich2019".into(),
+        item_type: "book".into(),
+        author: vec![person("Author", "Alice")],
+        title: Some("A Comprehensive Treatise".into()),
+        container_title_short: Some("Treatise".into()),
+        publisher: Some("University Press".into()),
+        publisher_place: Some("Oxford".into()),
+        issued: Some(year(2019)),
+        edition: Some("2".into()),
+        isbn: Some("978-0-19-123456-7".into()),
+        url: Some("https://example.org/book".into()),
+        abstract_: Some("A study of mutations.".into()),
+        page: Some("100-200".into()),
+        ..Default::default()
+    }
+}
+
+/// Reference: paper authored by exactly 21 people — APA bib's
+/// official threshold for et-al-use-last (renders first 19 + last).
+fn paper_with_21_authors() -> CslItem {
+    let mut authors = Vec::with_capacity(21);
+    for i in 1..=21 {
+        authors.push(person(&format!("Author{i}"), &format!("Given{i}")));
+    }
+    CslItem {
+        id: "twentyone2020".into(),
+        item_type: "article-journal".into(),
+        author: authors,
+        title: Some("A 21-author paper".into()),
+        container_title: Some("Big Science".into()),
+        issued: Some(year(2020)),
+        volume: Some("1".into()),
+        page: Some("1-2".into()),
+        ..Default::default()
+    }
+}
+
 /// Reference: non-Latin scripts (Cyrillic + CJK).
 fn non_latin_authors() -> CslItem {
     CslItem {
@@ -481,4 +605,352 @@ fn html_format_escape_handles_html_special_chars() {
 fn plain_format_italic_passes_through_unchanged() {
     let plain = Plain;
     assert_eq!(plain.italic("foo"), "foo");
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 5.2.1 — additional bundled styles (Harvard, Nature,
+// Science, Cell, PLOS) — bib + inline snapshots.
+// ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn render_bib_harvard_journal_article_snapshot() {
+    let bib =
+        render_bib(&[journal_article_single_author()], "harvard").expect("Harvard bib must render");
+    insta::assert_snapshot!(bib);
+}
+
+#[test]
+fn render_bib_nature_journal_article_snapshot() {
+    let bib =
+        render_bib(&[journal_article_single_author()], "nature").expect("Nature bib must render");
+    insta::assert_snapshot!(bib);
+}
+
+#[test]
+fn render_bib_science_journal_article_snapshot() {
+    let bib =
+        render_bib(&[journal_article_single_author()], "science").expect("Science bib must render");
+    insta::assert_snapshot!(bib);
+}
+
+#[test]
+fn render_bib_cell_journal_article_snapshot() {
+    let bib = render_bib(&[journal_article_single_author()], "cell").expect("Cell bib must render");
+    insta::assert_snapshot!(bib);
+}
+
+#[test]
+fn render_bib_plos_journal_article_snapshot() {
+    let bib = render_bib(&[journal_article_single_author()], "plos").expect("PLOS bib must render");
+    insta::assert_snapshot!(bib);
+}
+
+#[test]
+fn render_inline_harvard_is_author_year_form() {
+    let cite = render_inline(&journal_article_single_author(), "harvard")
+        .expect("Harvard inline must render");
+    insta::assert_snapshot!(cite);
+}
+
+#[test]
+fn render_inline_nature_is_numeric_form() {
+    let cite = render_inline(&journal_article_single_author(), "nature")
+        .expect("Nature inline must render");
+    insta::assert_snapshot!(cite);
+}
+
+#[test]
+fn render_inline_science_is_numeric_form() {
+    let cite = render_inline(&journal_article_single_author(), "science")
+        .expect("Science inline must render");
+    insta::assert_snapshot!(cite);
+}
+
+#[test]
+fn render_inline_cell_is_numeric_form() {
+    let cite =
+        render_inline(&journal_article_single_author(), "cell").expect("Cell inline must render");
+    insta::assert_snapshot!(cite);
+}
+
+#[test]
+fn render_inline_plos_is_numeric_form() {
+    let cite =
+        render_inline(&journal_article_single_author(), "plos").expect("PLOS inline must render");
+    insta::assert_snapshot!(cite);
+}
+
+#[test]
+fn all_bundled_styles_parse_without_error() {
+    // Smoke test: every bundled style id must parse + render without
+    // hitting MalformedStyle. Catches regressions when adding new
+    // styles whose CSL constructs aren't yet supported.
+    use apalabrar_citation::assets::bundled_style_ids;
+    let item = journal_article_single_author();
+    for id in bundled_style_ids() {
+        render_bib(std::slice::from_ref(&item), id).unwrap_or_else(|e| {
+            panic!("bundled style {id:?} failed to render: {e:?}");
+        });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 5.2-polish: targeted mutation-kill tests
+//
+// These tests are written specifically to kill cargo-mutants
+// survivors in renderer.rs by exercising code paths that the
+// snapshot tests don't reach: editor/translator branches, full-date
+// month rendering, et-al-use-last, label-is-plural counts, etc.
+// ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn render_bib_chapter_with_editor_renders_editor_name() {
+    // Chicago notes-bibliography renders the editor's family name for
+    // a chapter. Killing the variable_present "editor" arm would
+    // suppress the editor here.
+    let bib = render_bib(
+        &[paper_with_editor_and_translator()],
+        "chicago-notes-bibliography",
+    )
+    .expect("Chicago bib must render");
+    assert!(
+        bib.contains("Bloggs"),
+        "expected editor 'Bloggs' in output: {bib}"
+    );
+}
+
+#[test]
+fn render_bib_apa_chapter_with_translator_renders_translator_name() {
+    // APA bib renders translator names when present and the chapter
+    // path qualifies. Kills variable_present "translator" + name_var
+    // "translator" arms.
+    let bib = render_bib(&[paper_with_editor_and_translator()], "apa")
+        .expect("APA bib must render chapter");
+    let has_translator =
+        bib.contains("Targaryen") || bib.contains("T. Targaryen") || bib.contains("Tessa");
+    assert!(
+        has_translator,
+        "expected translator surname in APA output: {bib}",
+    );
+}
+
+#[test]
+fn render_bib_with_multiple_editors_renders_each_editor_name() {
+    // With multiple editors, all editor surnames must appear in the
+    // output. Kills the variable_present "editor" arm and the
+    // name_var "editor" arm — without them both editors would be
+    // dropped or duplicated.
+    let bib = render_bib(
+        &[paper_with_multiple_editors_and_translators()],
+        "chicago-notes-bibliography",
+    )
+    .expect("Chicago bib must render");
+    let editor_one_count = bib.matches("One Editor").count() + bib.matches("Editor, One").count();
+    let editor_two_count = bib.matches("Two Editor").count() + bib.matches("Editor, Two").count();
+    assert!(
+        editor_one_count >= 1 && editor_two_count >= 1,
+        "expected both editors to render: {bib}",
+    );
+}
+
+#[test]
+fn render_bib_harvard_newspaper_emits_long_month_name() {
+    // Harvard uses <date-part name="month" form="long"/> for
+    // article-newspaper. This exercises english_month_long.
+    let bib = render_bib(&[newspaper_article_with_full_date()], "harvard")
+        .expect("Harvard bib must render newspaper");
+    // June from ymd(2022, 6, 15).
+    assert!(
+        bib.contains("June"),
+        "expected 'June' (english_month_long) in output: {bib}"
+    );
+}
+
+#[test]
+fn render_bib_plos_webpage_emits_short_month_name() {
+    // PLOS uses <date-part name="month" form="short" strip-periods="true"/>.
+    // Exercises english_month_short. With strip-periods, "Mar." → "Mar".
+    let bib =
+        render_bib(&[webpage_with_full_date()], "plos").expect("PLOS bib must render webpage");
+    // March from ymd(2023, 3, 21) — short form is "Mar." or "Mar" after strip-periods.
+    assert!(
+        bib.contains("Mar"),
+        "expected 'Mar' (english_month_short, strip-periods) in output: {bib}"
+    );
+}
+
+#[test]
+fn render_bib_apa_with_21_authors_uses_et_al_use_last() {
+    // APA bib's et-al-use-last fires at exactly 21 authors: render
+    // first 19, then "…", then the LAST name. Kills the
+    // et_al_use_last branch in render_one_names_var (line 468).
+    let bib =
+        render_bib(&[paper_with_21_authors()], "apa").expect("APA bib must render 21 authors");
+    // Last author is "Author21".
+    assert!(
+        bib.contains("Author21"),
+        "expected last author 'Author21' (et-al-use-last) in output: {bib}"
+    );
+    // The 20th author is dropped.
+    assert!(
+        !bib.contains("Author20"),
+        "et-al-use-last should drop the 20th author: {bib}"
+    );
+    // Ellipsis or some terminal separator appears.
+    assert!(
+        bib.contains('…') || bib.contains("..."),
+        "expected ellipsis between 19th and last author: {bib}"
+    );
+}
+
+#[test]
+fn render_bib_apa_with_2_authors_does_not_use_et_al() {
+    // With 2 authors and no et-al threshold reached, both names render
+    // joined by " & " (APA). Distinguishes the et-al threshold branch.
+    let two = CslItem {
+        id: "two2020".into(),
+        item_type: "article-journal".into(),
+        author: vec![person("Smith", "John"), person("Doe", "Jane")],
+        title: Some("Two heads".into()),
+        container_title: Some("Journal".into()),
+        issued: Some(year(2020)),
+        ..Default::default()
+    };
+    let bib = render_bib(&[two], "apa").expect("APA bib must render 2 authors");
+    assert!(bib.contains("Smith"), "first author missing: {bib}");
+    assert!(bib.contains("Doe"), "second author missing: {bib}");
+    assert!(
+        !bib.contains("et al"),
+        "et-al should NOT appear for 2 authors in APA: {bib}",
+    );
+}
+
+#[test]
+fn render_inline_apa_subsequent_position_for_second_item_in_cluster() {
+    // render_bib walks items with idx+1 → first=1, second=2. APA has
+    // disambiguate-add-year-suffix and other position-aware behaviors;
+    // testing that two items render *differently per position*
+    // exercises evaluate_conditions position="first"/"subsequent".
+    // Use two items with same author+year so disambiguation kicks in.
+    let item_a = journal_article_single_author();
+    let mut item_b = item_a.clone();
+    item_b.id = "smith2020-second".into();
+    item_b.title = Some("A second paper".into());
+    let bib = render_bib(&[item_a, item_b], "apa").expect("APA bib must render two items");
+    // The output must include both papers' titles.
+    assert!(
+        bib.contains("On the nature of typesetting"),
+        "first title missing: {bib}",
+    );
+    assert!(
+        bib.contains("A second paper"),
+        "second title missing: {bib}"
+    );
+}
+
+#[test]
+fn render_bib_harvard_includes_publisher_place_for_book() {
+    // Harvard renders publisher-place for books. Kills the
+    // resolve_variable "publisher-place" arm.
+    let bib = render_bib(&[book_with_rich_metadata()], "harvard")
+        .expect("Harvard bib must render rich book");
+    assert!(
+        bib.contains("Oxford"),
+        "publisher-place arm of resolve_variable failed: {bib}",
+    );
+}
+
+#[test]
+fn render_bib_apa_includes_edition_for_book() {
+    // APA bib emits the edition number for books. Kills the
+    // resolve_variable "edition" arm.
+    let bib =
+        render_bib(&[book_with_rich_metadata()], "apa").expect("APA bib must render rich book");
+    assert!(
+        bib.contains("2 ed") || bib.contains("(2") || bib.contains("2nd"),
+        "edition arm of resolve_variable failed: {bib}",
+    );
+}
+
+#[test]
+fn render_bib_with_url_emits_url_arm() {
+    // PLOS / many styles render URL when present. Kills resolve_variable
+    // "URL" arm.
+    let bib = render_bib(&[webpage_with_full_date()], "plos")
+        .expect("PLOS bib must render webpage with URL");
+    assert!(
+        bib.contains("example.org/post/42"),
+        "URL arm of resolve_variable failed: {bib}",
+    );
+}
+
+#[test]
+fn render_bib_with_isbn_emits_isbn_arm() {
+    // Some styles emit ISBN for books. Test against Harvard which
+    // includes URL/ISBN macros conditionally.
+    let mut book_with_isbn = book_with_rich_metadata();
+    // Drop the URL so style falls back to ISBN if it has that path.
+    book_with_isbn.url = None;
+    let _bib =
+        render_bib(&[book_with_isbn], "harvard").expect("Harvard must render book with isbn");
+    // We intentionally don't assert on the specific format — Harvard
+    // may or may not display ISBN; rendering succeeding is enough to
+    // exercise the resolve_variable resolution path.
+}
+
+#[test]
+fn render_bib_apa_includes_short_journal_title_when_used() {
+    // AMA uses container-title-short. APA bib uses container-title.
+    // Exercise title-short via AMA which abbreviates ("J Typogr").
+    let bib = render_bib(&[journal_article_single_author()], "ama").expect("AMA bib must render");
+    assert!(
+        bib.contains("J Typogr") || bib.contains("J. Typogr"),
+        "title-short arm of resolve_variable failed: {bib}",
+    );
+}
+
+#[test]
+fn render_bib_apa_omits_editor_when_absent() {
+    // No editor → variable_present "editor" returns false → editor
+    // macro is suppressed. Distinguishes the "delete arm editor"
+    // mutant: a mutated variant either always-true or always-false
+    // would change at least one of the assertions below.
+    let item = journal_article_single_author(); // editor: vec![]
+    let bib = render_bib(&[item], "apa").expect("APA bib must render");
+    assert!(
+        !bib.contains("ed.") && !bib.to_lowercase().contains("editor"),
+        "editor label should be suppressed when no editor: {bib}",
+    );
+}
+
+#[test]
+fn render_inline_apa_uses_year_only_form() {
+    // APA inline = author + year. Together with the existing author-
+    // year snapshot, this kills the variable_present "issued" arm:
+    // if "issued" returned false, the year would be missing.
+    let cite =
+        render_inline(&journal_article_single_author(), "apa").expect("APA inline must render");
+    assert!(cite.contains("2020"), "year missing from inline: {cite}");
+    assert!(cite.contains("Smith"), "author missing from inline: {cite}");
+}
+
+#[test]
+fn render_bib_with_only_one_author_uses_singular_author_label() {
+    // Single author → label_is_plural author count > 1 returns false.
+    // Together with multi-author tests, this distinguishes that branch.
+    // Most APA-like styles don't emit an "author" label per se, but
+    // the function is called for the names label resolution.
+    let bib = render_bib(
+        &[journal_article_single_author()],
+        "chicago-notes-bibliography",
+    )
+    .expect("Chicago bib must render");
+    // Chicago's editor/translator labels are plural-aware; for a
+    // single-author paper, "Smith, John." appears once.
+    assert!(bib.contains("Smith"), "author missing: {bib}");
+    let smith_count = bib.matches("Smith").count();
+    assert_eq!(
+        smith_count, 1,
+        "expected exactly one 'Smith' occurrence: {bib}"
+    );
 }

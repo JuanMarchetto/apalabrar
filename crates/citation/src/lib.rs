@@ -20,7 +20,8 @@
 //!
 //! ## Bundled assets
 //!
-//! - 5 styles: APA 7, IEEE, MLA 9, AMA, Chicago notes-bibliography.
+//! - 10 styles: APA 7, IEEE, MLA 9, AMA, Chicago notes-bibliography,
+//!   Harvard (Cite Them Right 12th), Nature, Science, Cell, PLOS.
 //! - 8 locales: en-US, en-GB, es-ES, pt-BR, de-DE, fr-FR, zh-CN, ru-RU.
 //!
 //! Style + locale XML files are CC-BY-SA 3.0; see `assets/NOTICE.md`.
@@ -29,8 +30,12 @@
 //! ## Deferred to Phase 5.2.x
 //!
 //! - Disambiguation (Smith 2020a vs Smith 2020b) — single-pass renderer.
-//! - 5 additional styles (Harvard + AMA-equivs + Nature + Science +
-//!   ACS) — Phase 5.2.1.
+//! - Cite-cluster context (positions, locators, ibid).
+//! - Mutation kill rate >90% on renderer + parser — current 67% on
+//!   the renderer track; remaining survivors cluster in helper
+//!   functions (`english_ordinal_suffix`, `label_is_plural`,
+//!   `Formatting::is_empty`) whose paths aren't exercised by the
+//!   bundled-style snapshot outputs. Phase 5.2-polish-2 will revisit.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};

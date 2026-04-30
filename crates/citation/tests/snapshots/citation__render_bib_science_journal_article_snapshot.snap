@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 509
+expression: bib
+---
+1. J. Smith, On the nature of typesetting. <i>J. Typogr.</i> <b>12</b>, 123-145 (2020).
