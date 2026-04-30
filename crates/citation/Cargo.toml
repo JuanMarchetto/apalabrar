@@ -6,10 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Citation engine — citeproc-rs wrapper with CSL style cache and bibliography emitter."
+description = "Citation engine — own-impl CSL processor (Phase 5.2)."
 
 [dependencies]
-serde.workspace = true
+quick-xml = { workspace = true, features = ["serialize"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror.workspace = true
 
 [dev-dependencies]
