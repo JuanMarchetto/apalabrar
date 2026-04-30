@@ -174,6 +174,22 @@ impl From<find::Match> for MatchJson {
 // Phase 4.6 — Comments accessor (JSON wrapper for the wasm bridge)
 // ─────────────────────────────────────────────────────────────────
 
+/// Phase 4.7 — every suggestion in the doc, JSON-encoded as a
+/// `Suggestion[]`. Sorted by `suggestion_id`.
+pub fn suggestions_json(doc_id: DocId) -> Result<String, Error> {
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let suggestions: Vec<_> = entry
+        .doc
+        .suggestion_ids()
+        .into_iter()
+        .filter_map(|id| entry.doc.suggestion(&id))
+        .collect();
+    Ok(serialize_or_panic(&suggestions))
+}
+
 /// All comment threads in the doc, JSON-encoded as a `Comment[]`.
 /// The shape matches the TypeScript `Comment` interface in
 /// `packages/editor-bridge/src/core.ts`. Threads are returned sorted
@@ -238,6 +254,7 @@ fn edit_op_kind(op: &EditOp) -> &'static str {
         EditOp::SetCommentStatus { .. } => "SetCommentStatus",
         EditOp::Suggest { .. } => "Suggest",
         EditOp::AcceptSuggestion { .. } => "AcceptSuggestion",
+        EditOp::RejectSuggestion { .. } => "RejectSuggestion",
         EditOp::InsertCitation { .. } => "InsertCitation",
         EditOp::InsertFootnote { .. } => "InsertFootnote",
     }
@@ -258,7 +275,7 @@ mod wasm_api {
 
     use crate::bridge::{
         apply_edit_op_json, block_at_json, block_count, comments_json, create_doc, find_json,
-        restore_from_snapshot, snapshot,
+        restore_from_snapshot, snapshot, suggestions_json,
     };
     use crate::{DocId, Error, close_doc, doc_text};
 
@@ -314,5 +331,10 @@ mod wasm_api {
     #[wasm_bindgen(js_name = commentsInDoc)]
     pub fn js_comments_in_doc(doc_id: u64) -> Result<String, JsValue> {
         comments_json(DocId(doc_id)).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = suggestionsInDoc)]
+    pub fn js_suggestions_in_doc(doc_id: u64) -> Result<String, JsValue> {
+        suggestions_json(DocId(doc_id)).map_err(err)
     }
 }

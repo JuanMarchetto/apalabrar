@@ -78,6 +78,13 @@ class WasmMock implements ApalabrarCoreWasm {
     this.record('commentsInDoc', [docId]);
     return this.commentsResultJson;
   }
+
+  suggestionsResultJson = '[]';
+
+  suggestionsInDoc(docId: bigint): string {
+    this.record('suggestionsInDoc', [docId]);
+    return this.suggestionsResultJson;
+  }
 }
 
 describe('ApalabrarCore', () => {
@@ -264,12 +271,27 @@ describe('ApalabrarCore', () => {
         from: 0,
         to: 5,
         replacement: 'X',
+        author: 'tester',
+        created_at: 0,
       });
       expect(JSON.parse(json)).toEqual({
         kind: 'Suggest',
         from: 0,
         to: 5,
         replacement: 'X',
+        author: 'tester',
+        created_at: 0,
+      });
+    });
+
+    it('serializes RejectSuggestion', () => {
+      const json = dispatched({
+        kind: 'RejectSuggestion',
+        suggestion_id: 's-1',
+      });
+      expect(JSON.parse(json)).toEqual({
+        kind: 'RejectSuggestion',
+        suggestion_id: 's-1',
       });
     });
 
@@ -509,6 +531,8 @@ function arbitraryEditOp(): fc.Arbitrary<EditOp> {
         from: pos,
         to: pos,
         replacement: fc.string({ maxLength: 12 }),
+        author: fc.string({ maxLength: 8 }),
+        created_at: fc.integer({ min: 0, max: 4_102_444_800_000 }),
       })
       .map<EditOp>((r) => ({ kind: 'Suggest', ...r })),
     fc

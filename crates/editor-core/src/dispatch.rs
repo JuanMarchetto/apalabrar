@@ -353,6 +353,8 @@ pub fn dispatch(doc: &mut Doc, op: EditOp) -> Result<RenderDelta, Error> {
             from,
             to,
             replacement,
+            author,
+            created_at,
         } => {
             let pre_text = doc.text();
             let pre_len = pre_text.chars().count();
@@ -367,6 +369,8 @@ pub fn dispatch(doc: &mut Doc, op: EditOp) -> Result<RenderDelta, Error> {
                     from,
                     to,
                     replacement,
+                    author,
+                    created_at,
                 },
                 kind,
             )?;
@@ -382,6 +386,29 @@ pub fn dispatch(doc: &mut Doc, op: EditOp) -> Result<RenderDelta, Error> {
                 structural: false,
                 caret_hint: None,
                 minted_id: Some(MintedId::Suggestion(id)),
+            })
+        }
+        EditOp::RejectSuggestion { suggestion_id } => {
+            // Phase 4.7 — reject removes the mark; no text mutation,
+            // no structural change. dirty_blocks covers the suggestion's
+            // current range so the renderer can drop the strikethrough.
+            let pre_text = doc.text();
+            let (range_lo, range_hi) = doc
+                .find_suggestion_range(&suggestion_id)
+                .map(|r| (r.start, r.end))
+                .or_else(|| doc.suggestion(&suggestion_id).map(|s| (s.from, s.to)))
+                .unwrap_or((0, 0));
+            let block_lo = block_idx_at(&pre_text, range_lo);
+            let block_hi = block_idx_at(&pre_text, range_hi);
+            apply(doc, EditOp::RejectSuggestion { suggestion_id }, kind)?;
+            Ok(RenderDelta {
+                dirty_blocks: BlockRange {
+                    start: block_lo,
+                    end: block_hi + 1,
+                },
+                structural: false,
+                caret_hint: None,
+                minted_id: None,
             })
         }
         EditOp::AcceptSuggestion { suggestion_id } => {
@@ -503,6 +530,7 @@ fn edit_op_kind(op: &EditOp) -> &'static str {
         EditOp::SetCommentStatus { .. } => "SetCommentStatus",
         EditOp::Suggest { .. } => "Suggest",
         EditOp::AcceptSuggestion { .. } => "AcceptSuggestion",
+        EditOp::RejectSuggestion { .. } => "RejectSuggestion",
         EditOp::InsertCitation { .. } => "InsertCitation",
         EditOp::InsertFootnote { .. } => "InsertFootnote",
     }

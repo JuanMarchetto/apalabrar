@@ -27,6 +27,9 @@ export type {
 export { CommentsSheet } from './components/CommentsSheet';
 export type { CommentsSheetProps } from './components/CommentsSheet';
 
+export { SuggestionPill } from './components/SuggestionPill';
+export type { SuggestionPillProps } from './components/SuggestionPill';
+
 export { FindReplaceBar } from './components/FindReplaceBar';
 export type { FindReplaceBarProps } from './components/FindReplaceBar';
 

@@ -65,6 +65,8 @@ export {
   type Mark,
   type Match,
   type Position,
+  type Suggestion,
+  type SuggestionState,
 } from './core';
 
 export const VERSION = '0.0.0' as const;

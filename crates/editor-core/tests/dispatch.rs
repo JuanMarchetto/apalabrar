@@ -637,6 +637,8 @@ fn suggest_dirty_covers_anchor_range_with_minted_suggestion_id() {
             from: 0,
             to: 5,
             replacement: "GREETINGS".into(),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
@@ -653,6 +655,118 @@ fn suggest_dirty_covers_anchor_range_with_minted_suggestion_id() {
 }
 
 // -----------------------------------------------------------------------------
+// RejectSuggestion (Phase 4.7)
+// -----------------------------------------------------------------------------
+
+#[test]
+fn dispatch_reject_suggestion_emits_no_minted_id_with_anchor_dirty_range() {
+    let mut d = doc_with("hello world");
+    let s = dispatch(
+        &mut d,
+        EditOp::Suggest {
+            from: 0,
+            to: 5,
+            replacement: "X".into(),
+            author: "alice".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    let id = match s.minted_id {
+        Some(MintedId::Suggestion(s)) => s,
+        _ => panic!("expected suggestion id"),
+    };
+    let delta = dispatch(&mut d, EditOp::RejectSuggestion { suggestion_id: id }).unwrap();
+    assert!(!delta.structural);
+    assert_eq!(delta.minted_id, None);
+    // Anchor on block 0; dirty covers it.
+    assert_eq!(delta.dirty_blocks, BlockRange { start: 0, end: 1 });
+}
+
+#[test]
+fn dispatch_reject_unknown_suggestion_propagates_edit_op_failed() {
+    let mut d = doc_with("x");
+    let err = dispatch(
+        &mut d,
+        EditOp::RejectSuggestion {
+            suggestion_id: "s-bogus".into(),
+        },
+    )
+    .unwrap_err();
+    match err {
+        Error::EditOpFailed { kind, .. } => assert_eq!(kind, "RejectSuggestion"),
+        other => panic!("expected EditOpFailed, got {other:?}"),
+    }
+}
+
+#[test]
+fn dispatch_reject_does_not_modify_doc_text() {
+    let mut d = doc_with("hello world");
+    dispatch(
+        &mut d,
+        EditOp::Suggest {
+            from: 0,
+            to: 5,
+            replacement: "WOULD-CHANGE".into(),
+            author: "alice".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    dispatch(&mut d, EditOp::RejectSuggestion { suggestion_id: id }).unwrap();
+    assert_eq!(d.text(), "hello world");
+}
+
+#[test]
+fn dispatch_reject_in_second_block_dirty_starts_at_one() {
+    let mut d = doc_with("hello\nworld");
+    dispatch(
+        &mut d,
+        EditOp::Suggest {
+            from: 6,
+            to: 11,
+            replacement: "X".into(),
+            author: "alice".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    let delta = dispatch(&mut d, EditOp::RejectSuggestion { suggestion_id: id }).unwrap();
+    assert_eq!(delta.dirty_blocks, BlockRange { start: 1, end: 2 });
+}
+
+#[test]
+fn dispatch_reject_idempotent_after_accept_returns_ok_no_op() {
+    let mut d = doc_with("hello world");
+    dispatch(
+        &mut d,
+        EditOp::Suggest {
+            from: 0,
+            to: 5,
+            replacement: "X".into(),
+            author: "alice".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    let id = d.last_suggestion_id().unwrap();
+    dispatch(
+        &mut d,
+        EditOp::AcceptSuggestion {
+            suggestion_id: id.clone(),
+        },
+    )
+    .unwrap();
+    let post_accept_text = d.text();
+    let delta = dispatch(&mut d, EditOp::RejectSuggestion { suggestion_id: id }).unwrap();
+    // No state change, no panic. The reject is a no-op on already-accepted.
+    assert_eq!(d.text(), post_accept_text);
+    assert!(!delta.structural);
+}
+
+// -----------------------------------------------------------------------------
 // AcceptSuggestion
 // -----------------------------------------------------------------------------
 
@@ -665,6 +779,8 @@ fn accept_suggestion_dirty_covers_pre_apply_range_no_minted_id() {
             from: 0,
             to: 5,
             replacement: "GREETINGS".into(),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
@@ -695,6 +811,8 @@ fn accept_suggestion_with_newline_replacement_is_structural() {
             from: 0,
             to: 5,
             replacement: "a\nb".into(),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
@@ -719,6 +837,8 @@ fn accept_suggestion_structural_in_second_block_dirty_starts_at_block_lo_plus_on
             from: 3,
             to: 5,
             replacement: "X\nY\nZ".into(),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
@@ -761,6 +881,8 @@ fn accept_suggestion_already_accepted_is_idempotent_returns_zero_delta() {
             from: 0,
             to: 5,
             replacement: "X".into(),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
@@ -924,6 +1046,8 @@ fn arb_op() -> impl Strategy<Value = EditOp> {
                 from,
                 to,
                 replacement,
+                author: "tester".into(),
+                created_at: 0,
             }
         }),
         (0usize..40, "[a-z]{1,8}").prop_map(|(at, key)| EditOp::InsertCitation { at, key }),

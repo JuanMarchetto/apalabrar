@@ -75,8 +75,17 @@ export type EditOp =
     created_at: number;
   }
   | { kind: 'SetCommentStatus'; thread_id: string; status: CommentStatus; }
-  | { kind: 'Suggest'; from: Position; to: Position; replacement: string; }
+  | {
+    kind: 'Suggest';
+    from: Position;
+    to: Position;
+    replacement: string;
+    author: string;
+    /** Epoch milliseconds. */
+    created_at: number;
+  }
   | { kind: 'AcceptSuggestion'; suggestion_id: string; }
+  | { kind: 'RejectSuggestion'; suggestion_id: string; }
   | { kind: 'InsertCitation'; at: Position; key: string; }
   | { kind: 'InsertFootnote'; at: Position; body: BlockTree; };
 
@@ -84,6 +93,27 @@ export type EditOp =
 export interface CommentReply {
   id: string;
   body: string;
+  author: string;
+  /** Epoch milliseconds. */
+  created_at: number;
+}
+
+/**
+ * Phase 4.7 — suggestion lifecycle. Lowercase string union matches
+ * Rust's `#[serde(rename_all = "lowercase")] SuggestionState`.
+ */
+export type SuggestionState = 'pending' | 'accepted' | 'rejected';
+
+/** Phase 4.7 — suggestion snapshot returned by `core.suggestions()`. */
+export interface Suggestion {
+  id: string;
+  /** Original suggestion range (codepoints) at creation time. */
+  from: Position;
+  /** Original suggestion range end (exclusive). */
+  to: Position;
+  /** The replacement text that AcceptSuggestion would apply. */
+  replacement: string;
+  state: SuggestionState;
   author: string;
   /** Epoch milliseconds. */
   created_at: number;
@@ -127,6 +157,8 @@ export interface ApalabrarCoreWasm {
   findInDoc(docId: bigint, needle: string, optsJson: string): string;
   /** Phase 4.6 — returns a JSON-encoded `Comment[]`. */
   commentsInDoc(docId: bigint): string;
+  /** Phase 4.7 — returns a JSON-encoded `Suggestion[]`. */
+  suggestionsInDoc(docId: bigint): string;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -222,5 +254,14 @@ export class ApalabrarCore {
    */
   comments(id: CoreDocId): Comment[] {
     return JSON.parse(this.wasm.commentsInDoc(id)) as Comment[];
+  }
+
+  /**
+   * Phase 4.7 — list every suggestion in the doc, sorted by id.
+   * Returns the snapshot type [`Suggestion`] which carries state +
+   * author + created_at.
+   */
+  suggestions(id: CoreDocId): Suggestion[] {
+    return JSON.parse(this.wasm.suggestionsInDoc(id)) as Suggestion[];
   }
 }

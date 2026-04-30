@@ -4,8 +4,8 @@
 use std::ops::Range;
 
 use loro::{
-    Container, ExportMode, LoroDoc, LoroList, LoroListValue, LoroMap, LoroMapValue,
-    LoroMovableList, LoroText, LoroValue, TextDelta, ValueOrContainer,
+    Container, ExpandType, ExportMode, LoroDoc, LoroList, LoroListValue, LoroMap, LoroMapValue,
+    LoroMovableList, LoroText, LoroValue, StyleConfig, TextDelta, ValueOrContainer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +80,14 @@ const FIELD_REPLY_ID: &str = "id";
 const STATE_PENDING: &str = "pending";
 const STATE_ACCEPTED: &str = "accepted";
 const STATE_REJECTED: &str = "rejected";
+
+/// Phase 4.7 — Loro mark key carrying the suggestion id at every
+/// codepoint that belongs to a pending suggestion's *current*
+/// (mark-anchored) range. Distinct from `Mark::Bold/Italic` keys so
+/// formatting marks and suggestion marks compose freely. The mark
+/// VALUE is `LoroValue::String(suggestion_id)`; readers compare the
+/// id string to dispatch.
+const MARK_KEY_SUGGESTED: &str = "suggested";
 
 /// Comment-status string codes (Phase 4.6). Single source of truth.
 const STATUS_OPEN: &str = "open";
@@ -197,8 +205,18 @@ pub struct Doc {
 impl Doc {
     /// Create a fresh empty document.
     pub fn new() -> Self {
+        let inner = LoroDoc::new();
+        // Register a default text-style config so any mark key (Bold,
+        // Italic, "suggested") can be applied via `LoroText::mark`
+        // without per-key registration. ExpandType::After means a
+        // mark applied to [a, b) extends rightward when text is
+        // inserted exactly at `b` — matches Word's track-changes
+        // anchor behaviour.
+        inner.config_default_text_style(Some(StyleConfig {
+            expand: ExpandType::After,
+        }));
         Self {
-            inner: LoroDoc::new(),
+            inner,
             last_comment_thread_id: None,
             last_suggestion_id: None,
             last_citation_id: None,
@@ -278,6 +296,13 @@ impl Doc {
     pub fn from_snapshot(snapshot: &[u8]) -> Self {
         let inner = LoroDoc::from_snapshot(snapshot)
             .expect("loro from_snapshot should accept a previously exported snapshot");
+        // Re-register the same default style config as `Doc::new()` —
+        // style configs are NOT persisted in the snapshot, only the
+        // mark deltas are. Without this, `mark()` calls on the
+        // restored Doc would fail with `StyleConfigMissing`.
+        inner.config_default_text_style(Some(StyleConfig {
+            expand: ExpandType::After,
+        }));
         Self {
             inner,
             last_comment_thread_id: None,
@@ -579,6 +604,9 @@ impl Doc {
     }
 
     /// Suggestion by id, or `None` if absent / malformed.
+    ///
+    /// Phase 4.7 added `author` + `created_at`; pre-4.7 snapshots
+    /// without those fields decode with empty / 0 defaults.
     pub fn suggestion(&self, id: &str) -> Option<Suggestion> {
         let entry = match self.suggestions_map().get(id) {
             Some(ValueOrContainer::Container(Container::Map(m))) => m,
@@ -588,13 +616,77 @@ impl Doc {
         let to = read_i64_field(&entry, FIELD_TO)? as usize;
         let replacement = read_string_field(&entry, FIELD_REPLACEMENT)?;
         let state_str = read_string_field(&entry, FIELD_STATE)?;
+        let author = read_string_field(&entry, FIELD_AUTHOR).unwrap_or_default();
+        let created_at = read_i64_field(&entry, FIELD_CREATED_AT).unwrap_or(0);
         Some(Suggestion {
             id: id.to_string(),
             from,
             to,
             replacement,
             state: str_to_state(&state_str),
+            author,
+            created_at,
         })
+    }
+
+    /// Phase 4.7 — find the codepoint range currently carrying the
+    /// "suggested" mark whose value matches `suggestion_id`. Returns
+    /// `None` when the mark is absent (i.e., the suggestion has been
+    /// accepted/rejected, or the suggestion id is unknown).
+    ///
+    /// The returned range is contiguous: scans `body.to_delta()` and
+    /// returns the half-open `[first_marked..last_marked)` span. If
+    /// the mark is fragmented across non-adjacent segments
+    /// (theoretically possible after concurrent merges), returns the
+    /// span from the first to the last marked position — callers
+    /// treat that as the conservative covering range.
+    pub fn find_suggestion_range(&self, suggestion_id: &str) -> Option<Range<usize>> {
+        let mut cursor: usize = 0;
+        let mut start: Option<usize> = None;
+        let mut end: Option<usize> = None;
+        for segment in self.body().to_delta() {
+            let TextDelta::Insert { insert, attributes } = segment else {
+                continue;
+            };
+            let chars = insert.chars().count();
+            let marked = attributes
+                .as_ref()
+                .and_then(|a| a.get(MARK_KEY_SUGGESTED))
+                .map(|v| matches!(v, LoroValue::String(s) if s.as_ref() == suggestion_id))
+                .unwrap_or(false);
+            if marked {
+                if start.is_none() {
+                    start = Some(cursor);
+                }
+                end = Some(cursor + chars);
+            }
+            cursor += chars;
+        }
+        Some(start?..end?)
+    }
+
+    /// Phase 4.7 — `Some(suggestion_id)` if codepoint position `pos`
+    /// is currently inside a suggestion mark; `None` otherwise.
+    /// Used by the editor surface to render inline pill chips.
+    pub fn suggestion_at(&self, pos: usize) -> Option<String> {
+        let mut cursor: usize = 0;
+        for segment in self.body().to_delta() {
+            let TextDelta::Insert { insert, attributes } = segment else {
+                continue;
+            };
+            let chars = insert.chars().count();
+            if pos < cursor + chars {
+                return attributes
+                    .as_ref()
+                    .and_then(|a| a.get(MARK_KEY_SUGGESTED))
+                    .and_then(|v| match v {
+                        LoroValue::String(s) => Some(s.to_string()),
+                        _ => None,
+                    });
+            }
+            cursor += chars;
+        }
+        None
     }
 
     /// Sorted IDs of suggestions whose state is `Pending`.
@@ -952,19 +1044,34 @@ pub struct Comment {
     pub replies: Vec<CommentReply>,
 }
 
-/// Lifecycle of a suggestion (Phase C). New suggestions land in
-/// `Pending`; `AcceptSuggestion` flips to `Accepted` and applies the
-/// text replacement. `Rejected` is reserved for a future
-/// `RejectSuggestion` variant — Phase C v0 only ships accept.
+/// Lifecycle of a suggestion. New suggestions land in `Pending`;
+/// `AcceptSuggestion` flips to `Accepted` and applies the text
+/// replacement. Phase 4.7 ships `RejectSuggestion` which flips to
+/// `Rejected` (one-way; no return to Pending).
+///
+/// Serialised as lowercase strings (`"pending"` | `"accepted"` |
+/// `"rejected"`) to match the TypeScript `SuggestionState` literal
+/// union and the stored `FIELD_STATE` value in Loro.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SuggestionState {
     Pending,
     Accepted,
     Rejected,
 }
 
-/// Snapshot of a suggestion record (Phase C). Same anchor caveat
-/// as `Comment`.
+/// Snapshot of a suggestion record.
+///
+/// Phase 4.7 changed anchoring: the authoritative range is the Loro
+/// "suggested" mark (key = [`MARK_KEY_SUGGESTED`], value = id) which
+/// travels with the text under CRDT merges. The `from / to` fields
+/// here are the ORIGINAL range at suggestion-creation time and are
+/// retained for UI display ("you suggested replacing this 5-char
+/// span"); for the actual range to modify on accept, callers use
+/// [`Doc::find_suggestion_range`].
+///
+/// Phase 4.7 added `author` + `created_at`. Pre-4.7 snapshots
+/// without those fields decode with empty / 0 defaults.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Suggestion {
     pub id: String,
@@ -972,6 +1079,9 @@ pub struct Suggestion {
     pub to: Position,
     pub replacement: String,
     pub state: SuggestionState,
+    pub author: String,
+    /// Epoch milliseconds. See [`Comment::created_at`].
+    pub created_at: i64,
 }
 
 /// Snapshot of a citation record (Phase D). The citation is
@@ -1064,14 +1174,27 @@ pub enum EditOp {
         status: CommentStatus,
     },
     /// Propose a replacement for `[from, to)` without applying it
-    /// (Phase C — track-changes).
+    /// (Phase C, extended in Phase 4.7 with author / created_at and
+    /// a Loro mark on the original range).
     Suggest {
         from: Position,
         to: Position,
         replacement: String,
+        author: String,
+        /// Epoch milliseconds.
+        created_at: i64,
     },
-    /// Apply a previously-recorded suggestion by id (Phase C).
+    /// Apply a previously-recorded suggestion (Phase C). Uses the
+    /// CURRENT mark-anchored range — the stored `from / to` are
+    /// historical metadata; the range to mutate is whatever the
+    /// "suggested" mark currently covers (Phase 4.7 marks-based
+    /// anchoring).
     AcceptSuggestion { suggestion_id: String },
+    /// Reject a pending suggestion (Phase 4.7). Removes the mark and
+    /// flips state to `Rejected`. Leaves the body text untouched.
+    /// Errors with [`Error::SuggestionNotFound`] for unknown ids.
+    /// One-way: a rejected suggestion does not return to Pending.
+    RejectSuggestion { suggestion_id: String },
     /// Anchor a CSL citation key at `at` (Phase D).
     InsertCitation { at: Position, key: String },
     /// Anchor a footnote (its body lives in a sub-doc) at `at`
@@ -1159,9 +1282,14 @@ impl Doc {
                 from,
                 to,
                 replacement,
-            } => self.handle_suggest(from, to, replacement),
+                author,
+                created_at,
+            } => self.handle_suggest(from, to, replacement, author, created_at),
             EditOp::AcceptSuggestion { suggestion_id } => {
                 self.handle_accept_suggestion(suggestion_id)
+            }
+            EditOp::RejectSuggestion { suggestion_id } => {
+                self.handle_reject_suggestion(suggestion_id)
             }
             EditOp::InsertCitation { at, key } => self.handle_insert_citation(at, key),
             EditOp::InsertFootnote { at, body } => self.handle_insert_footnote(at, body),
@@ -1406,17 +1534,30 @@ impl Doc {
         from: Position,
         to: Position,
         replacement: String,
+        author: String,
+        created_at: i64,
     ) -> Result<(), Error> {
         let id = self.next_id("s", META_KEY_NEXT_SUGGESTION);
+        let body = self.body();
+        let len = body.len_unicode();
+        let start = from.min(len);
+        let end = to.min(len).max(start);
+        // Apply the "suggested" mark to the original range carrying the
+        // suggestion id as value. Loro propagates the mark across the
+        // CRDT so concurrent edits inside the range stay covered.
+        if start < end {
+            body.mark(start..end, MARK_KEY_SUGGESTED, id.clone())
+                .expect("loro text mark after clip should not fail");
+        }
         let entry = self
             .suggestions_map()
             .get_or_create_container(&id, LoroMap::new())
             .expect("loro get_or_create_container should not fail");
         entry
-            .insert(FIELD_FROM, LoroValue::I64(from as i64))
+            .insert(FIELD_FROM, LoroValue::I64(start as i64))
             .expect("loro map insert should not fail");
         entry
-            .insert(FIELD_TO, LoroValue::I64(to as i64))
+            .insert(FIELD_TO, LoroValue::I64(end as i64))
             .expect("loro map insert should not fail");
         entry
             .insert(FIELD_REPLACEMENT, replacement)
@@ -1424,14 +1565,24 @@ impl Doc {
         entry
             .insert(FIELD_STATE, state_to_str(SuggestionState::Pending))
             .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_AUTHOR, author)
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_CREATED_AT, LoroValue::I64(created_at))
+            .expect("loro map insert should not fail");
         self.last_suggestion_id = Some(id);
         Ok(())
     }
 
-    /// Apply a previously-recorded suggestion: delete `[from, to)`,
-    /// insert `replacement` at `from`, mark the suggestion as
-    /// `Accepted`. Already-accepted/rejected suggestions are no-ops
-    /// (idempotent). Unknown ids return `Error::SuggestionNotFound`.
+    /// Apply a previously-recorded suggestion. Phase 4.7: the range
+    /// to mutate is the CURRENT marked range from
+    /// [`Self::find_suggestion_range`], not the stored from/to (which
+    /// are the original creation-time anchors and may have gone
+    /// stale under intervening edits). The mark is implicitly cleared
+    /// when the marked text is deleted.
+    /// Already-accepted/rejected suggestions are no-ops (idempotent).
+    /// Unknown ids return `Error::SuggestionNotFound`.
     fn handle_accept_suggestion(&mut self, id: String) -> Result<(), Error> {
         let entry = match self.suggestions_map().get(&id) {
             Some(ValueOrContainer::Container(Container::Map(m))) => m,
@@ -1443,16 +1594,49 @@ impl Doc {
         if state != SuggestionState::Pending {
             return Ok(());
         }
-        let from = read_i64_field(&entry, FIELD_FROM)
-            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))? as usize;
-        let to = read_i64_field(&entry, FIELD_TO)
-            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))? as usize;
         let replacement = read_string_field(&entry, FIELD_REPLACEMENT)
             .ok_or_else(|| Error::SuggestionNotFound(id.clone()))?;
-        self.delete(from..to);
-        self.insert(from, &replacement);
+        // Phase 4.7 — use the CURRENT marked range; falls back to the
+        // stored from/to only if the mark is somehow missing (eg. a
+        // pre-4.7 snapshot loaded before re-apply).
+        let range = self
+            .find_suggestion_range(&id)
+            .or_else(|| {
+                let from = read_i64_field(&entry, FIELD_FROM)? as usize;
+                let to = read_i64_field(&entry, FIELD_TO)? as usize;
+                Some(from..to)
+            })
+            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))?;
+        self.delete(range.start..range.end);
+        self.insert(range.start, &replacement);
         entry
             .insert(FIELD_STATE, state_to_str(SuggestionState::Accepted))
+            .expect("loro map insert should not fail");
+        Ok(())
+    }
+
+    /// Phase 4.7 — reject a pending suggestion. Removes the
+    /// "suggested" mark from the suggestion's current range and
+    /// flips state to `Rejected`. Body text is unchanged.
+    /// Already-accepted / already-rejected suggestions are no-ops.
+    fn handle_reject_suggestion(&mut self, id: String) -> Result<(), Error> {
+        let entry = match self.suggestions_map().get(&id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return Err(Error::SuggestionNotFound(id)),
+        };
+        let state = read_string_field(&entry, FIELD_STATE)
+            .map(|s| str_to_state(&s))
+            .ok_or_else(|| Error::SuggestionNotFound(id.clone()))?;
+        if state != SuggestionState::Pending {
+            return Ok(());
+        }
+        if let Some(range) = self.find_suggestion_range(&id) {
+            self.body()
+                .unmark(range.start..range.end, MARK_KEY_SUGGESTED)
+                .expect("loro text unmark should not fail");
+        }
+        entry
+            .insert(FIELD_STATE, state_to_str(SuggestionState::Rejected))
             .expect("loro map insert should not fail");
         Ok(())
     }

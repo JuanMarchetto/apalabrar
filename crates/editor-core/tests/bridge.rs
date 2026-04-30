@@ -277,6 +277,8 @@ fn apply_edit_op_suggest_then_accept_applies_replacement() {
             from: 0,
             to: 5,
             replacement: "HOLA".into(),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();

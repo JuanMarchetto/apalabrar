@@ -1220,6 +1220,8 @@ fn suggest_creates_pending_record() {
         from: 0,
         to: 5,
         replacement: "HOLA".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().expect("id assigned");
@@ -1243,6 +1245,8 @@ fn suggest_generates_unique_ids_across_calls() {
             from: 0,
             to: 1,
             replacement: "X".into(),
+            author: "tester".into(),
+            created_at: 0,
         })
         .unwrap();
         ids.push(d.last_suggestion_id().unwrap());
@@ -1259,6 +1263,8 @@ fn suggest_lists_in_pending_ids() {
         from: 0,
         to: 1,
         replacement: "X".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1274,6 +1280,8 @@ fn suggest_with_empty_replacement_is_a_proposed_deletion() {
         from: 5,
         to: 11,
         replacement: "".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1296,6 +1304,8 @@ fn accept_suggestion_applies_replacement_and_marks_accepted() {
         from: 0,
         to: 5,
         replacement: "HOLA".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1318,6 +1328,8 @@ fn accept_suggestion_with_empty_replacement_deletes_range() {
         from: 5,
         to: 11,
         replacement: "".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1349,6 +1361,8 @@ fn accept_suggestion_already_accepted_is_idempotent() {
         from: 0,
         to: 1,
         replacement: "X".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1375,6 +1389,8 @@ fn accept_suggestion_preserves_other_pending() {
         from: 0,
         to: 4,
         replacement: "XX".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id1 = d.last_suggestion_id().unwrap();
@@ -1382,6 +1398,8 @@ fn accept_suggestion_preserves_other_pending() {
         from: 5,
         to: 9,
         replacement: "YY".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id2 = d.last_suggestion_id().unwrap();
@@ -1428,6 +1446,8 @@ fn snapshot_round_trip_preserves_suggestion_state() {
         from: 0,
         to: 5,
         replacement: "HOLA".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1448,6 +1468,8 @@ fn snapshot_round_trip_preserves_accepted_suggestion() {
         from: 0,
         to: 5,
         replacement: "HOLA".into(),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let id = d.last_suggestion_id().unwrap();
@@ -1491,6 +1513,7 @@ proptest! {
         let to = from + target.chars().count();
         suggested.apply_edit_op(EditOp::Suggest {
             from, to, replacement: replacement.clone(),
+            author: "tester".into(), created_at: 0,
         }).unwrap();
         let id = suggested.last_suggestion_id().unwrap();
         suggested.apply_edit_op(EditOp::AcceptSuggestion {
@@ -1536,6 +1559,7 @@ proptest! {
         for i in 0..n_pending {
             d.apply_edit_op(EditOp::Suggest {
                 from: i * 2, to: i * 2 + 1, replacement: "X".into(),
+                author: "tester".into(), created_at: 0,
             }).unwrap();
             ids.push(d.last_suggestion_id().unwrap());
         }
