@@ -36,6 +36,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+pub mod assets;
+pub mod ast;
+pub mod parser;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // ─────────────────────────────────────────────────────────────────
@@ -214,20 +218,31 @@ pub trait OutputFormat {
 pub struct Html;
 
 impl OutputFormat for Html {
-    fn italic(&self, _inner: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn italic(&self, inner: &str) -> String {
+        format!("<i>{inner}</i>")
     }
-    fn bold(&self, _inner: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn bold(&self, inner: &str) -> String {
+        format!("<b>{inner}</b>")
     }
-    fn link(&self, _inner: &str, _href: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn link(&self, inner: &str, href: &str) -> String {
+        // href is also escaped to prevent attribute-injection.
+        format!("<a href=\"{}\">{inner}</a>", self.escape(href))
     }
-    fn superscript(&self, _inner: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn superscript(&self, inner: &str) -> String {
+        format!("<sup>{inner}</sup>")
     }
-    fn escape(&self, _text: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn escape(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        for c in text.chars() {
+            match c {
+                '<' => out.push_str("&lt;"),
+                '>' => out.push_str("&gt;"),
+                '&' => out.push_str("&amp;"),
+                '"' => out.push_str("&quot;"),
+                _ => out.push(c),
+            }
+        }
+        out
     }
 }
 
@@ -237,20 +252,21 @@ impl OutputFormat for Html {
 pub struct Plain;
 
 impl OutputFormat for Plain {
-    fn italic(&self, _inner: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn italic(&self, inner: &str) -> String {
+        inner.to_string()
     }
-    fn bold(&self, _inner: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn bold(&self, inner: &str) -> String {
+        inner.to_string()
     }
-    fn link(&self, _inner: &str, _href: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn link(&self, inner: &str, _href: &str) -> String {
+        // Plain text drops the URL; the visible label remains.
+        inner.to_string()
     }
-    fn superscript(&self, _inner: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn superscript(&self, inner: &str) -> String {
+        inner.to_string()
     }
-    fn escape(&self, _text: &str) -> String {
-        todo!("Phase 5.2 GREEN")
+    fn escape(&self, text: &str) -> String {
+        text.to_string()
     }
 }
 
@@ -264,33 +280,43 @@ impl OutputFormat for Plain {
 /// `style` is one of the bundled style ids: `"apa"`, `"ieee"`,
 /// `"mla"`, `"ama"`, `"chicago-notes-bibliography"`. Returns
 /// [`Error::UnknownStyle`] otherwise.
-pub fn render_bib(_items: &[CslItem], _style: &str) -> Result<String, Error> {
-    todo!("Phase 5.2 GREEN")
+pub fn render_bib(items: &[CslItem], style: &str) -> Result<String, Error> {
+    render_bib_with(items, style, "en-US", &Html)
 }
 
 /// Render an in-text citation for a single item. HTML output, en-US.
-pub fn render_inline(_item: &CslItem, _style: &str) -> Result<String, Error> {
-    todo!("Phase 5.2 GREEN")
+pub fn render_inline(item: &CslItem, style: &str) -> Result<String, Error> {
+    render_inline_with(item, style, "en-US", &Html)
 }
 
 /// Render a bibliography with explicit locale + output format.
 pub fn render_bib_with<F: OutputFormat>(
     _items: &[CslItem],
-    _style: &str,
-    _locale: &str,
+    style: &str,
+    locale: &str,
     _format: &F,
 ) -> Result<String, Error> {
-    todo!("Phase 5.2 GREEN")
+    let _style_xml = assets::style_xml(style).ok_or_else(|| Error::UnknownStyle(style.into()))?;
+    let _locale_xml =
+        assets::locale_xml(locale).ok_or_else(|| Error::UnknownLocale(locale.into()))?;
+    // Phase 5.2-impl/parser landed lookup + parse; renderer ships in
+    // the next session. Until then, recognised inputs panic via
+    // todo!() — the test suite has #[ignore] markers on the affected
+    // tests so the suite stays green.
+    todo!("Phase 5.2-impl/renderer: walk Style AST + CslItem to produce IR")
 }
 
 /// Render an in-text citation with explicit locale + output format.
 pub fn render_inline_with<F: OutputFormat>(
     _item: &CslItem,
-    _style: &str,
-    _locale: &str,
+    style: &str,
+    locale: &str,
     _format: &F,
 ) -> Result<String, Error> {
-    todo!("Phase 5.2 GREEN")
+    let _style_xml = assets::style_xml(style).ok_or_else(|| Error::UnknownStyle(style.into()))?;
+    let _locale_xml =
+        assets::locale_xml(locale).ok_or_else(|| Error::UnknownLocale(locale.into()))?;
+    todo!("Phase 5.2-impl/renderer: walk Style AST + CslItem to produce IR")
 }
 
 // ─────────────────────────────────────────────────────────────────

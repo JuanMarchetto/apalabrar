@@ -426,14 +426,12 @@ fn render_bib_with_es_es_uses_spanish_terms() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_unknown_style_returns_unknown_style_error() {
     let err = render_bib(&[journal_article_single_author()], "made-up-style").unwrap_err();
     assert_eq!(err, Error::UnknownStyle("made-up-style".into()));
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_with_unknown_locale_returns_unknown_locale_error() {
     let err =
         render_bib_with(&[journal_article_single_author()], "apa", "xx-XX", &Html).unwrap_err();
@@ -476,14 +474,12 @@ fn render_bib_is_byte_deterministic_for_same_input_property() {
 // renderer so they're orthogonal to the todo!() panics on render_*.
 // They still expect Html/Plain impls to function.
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn html_format_italic_wraps_in_i_tag() {
     let html = Html;
     assert_eq!(html.italic("foo"), "<i>foo</i>");
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn html_format_escape_handles_html_special_chars() {
     let html = Html;
     let escaped = html.escape("a < b & c > d");
@@ -493,7 +489,6 @@ fn html_format_escape_handles_html_special_chars() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn plain_format_italic_passes_through_unchanged() {
     let plain = Plain;
     assert_eq!(plain.italic("foo"), "foo");
