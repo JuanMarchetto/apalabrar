@@ -1,0 +1,15 @@
+[package]
+name = "plugin-zotero"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+description = "Zotero plugin — fetches CSL-JSON from BetterBibTeX RPC, inserts citations, renders bibliography."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wit-bindgen = "0.34"

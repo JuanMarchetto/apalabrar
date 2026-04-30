@@ -1,10 +1,11 @@
-// Apalabrar plugin contract — Phase 5.3.
+// Apalabrar plugin contract — Phase 5.3 + 5.4.
 //
-// Four capability families: doc.read, doc.write, ui.panel, net.http.
-// Each is a WIT interface that the host imports into the plugin's
-// Component instance only when the Grants set explicitly allows it.
-// An ungranted capability is *absent* from the Linker — calling it
-// fails at instantiation as `Error::CapabilityDenied`.
+// Five capability families: doc.read, doc.write, ui.panel, net.http,
+// cite.render. Each is a WIT interface that the host imports into
+// the plugin's Component instance only when the Grants set
+// explicitly allows it. An ungranted capability is *absent* from
+// the Linker — calling it fails at instantiation as
+// `Error::CapabilityDenied`.
 //
 // All record-shaped types were collapsed to primitives + tuples so
 // the host can `func_wrap` without requiring `#[derive(ComponentType)]`
@@ -37,6 +38,20 @@ interface net {
     request: func(url: string, method: string) -> result<string, string>;
 }
 
+interface cite {
+    /// Format a CSL-JSON array as a bibliography in the given style.
+    /// `items-json` is a JSON array of CslItem objects. `style` is a
+    /// bundled style id (see `apalabrar_citation::assets::bundled_style_ids`).
+    /// Returns rendered HTML on success, error string on failure.
+    /// Granted by `Capability::CiteRender`.
+    format-bib: func(items-json: string, style: string) -> result<string, string>;
+
+    /// Format a single CSL-JSON item as an in-text citation.
+    /// Returns rendered HTML on success, error string on failure.
+    /// Granted by `Capability::CiteRender`.
+    format-inline: func(item-json: string, style: string) -> result<string, string>;
+}
+
 interface plugin {
     /// Plugin entry point invoked once after instantiation.
     run: func();
@@ -47,5 +62,6 @@ world apalabrar-plugin {
     import doc-mut;
     import ui;
     import net;
+    import cite;
     export plugin;
 }

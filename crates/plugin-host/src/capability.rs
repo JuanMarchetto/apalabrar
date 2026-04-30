@@ -27,6 +27,9 @@ pub enum Capability {
     UiPanel,
     /// Issue HTTP requests through the host adapter.
     NetHttp,
+    /// Render CSL citations / bibliographies via the host's
+    /// citation engine. Phase 5.4 addition.
+    CiteRender,
 }
 
 /// Set of capabilities granted to one plugin instance.

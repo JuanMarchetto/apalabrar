@@ -226,6 +226,7 @@ name = "apalabrar-plugin-host"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "apalabrar-citation",
  "insta",
  "proptest",
  "serde",
@@ -2184,6 +2185,13 @@ dependencies = [
 
 [[package]]
 name = "plugin-word-counter"
+version = "0.0.0"
+dependencies = [
+ "wit-bindgen 0.34.0",
+]
+
+[[package]]
+name = "plugin-zotero"
 version = "0.0.0"
 dependencies = [
  "wit-bindgen 0.34.0",

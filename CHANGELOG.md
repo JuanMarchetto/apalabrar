@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Phase 5.4 — Zotero plugin (v0 hero feature). `examples/plugin-zotero`
+  is the first marketplace-style plugin: it imports CSL-JSON from
+  Zotero's BetterBibTeX local RPC, replaces `[[zot:KEY]]` markers
+  in the doc with rendered inline citations, and (re)renders a
+  bibliography section delimited by `<!-- bib-start -->` /
+  `<!-- bib-end -->`. The active CSL style is read from a
+  `<!-- style: ID -->` marker (default `apa`) so changing the
+  marker and re-running the plugin yields a re-rendered doc in
+  the new style.
+- Plugin contract extended with a fifth capability: `cite-render`
+  exposes `cite.format-bib` and `cite.format-inline` as host
+  functions backed by `apalabrar-citation`. The WIT interface
+  lives in `crates/plugin-host/wit/editor.wit`, and the host
+  wires it through `Plugin::instantiate` only when the manifest
+  declares the capability and the load-time `Grants` set
+  approves it.
+- Plugin architecture pattern: the Zotero plugin keeps every
+  pure transformation (marker extraction, style parsing, inline
+  / bibliography splicing, dedup, JSON concat, orchestration via
+  a `process_doc` higher-order function) on the host-testable
+  side of a `#[cfg(target_arch = "wasm32")]` boundary, and
+  collapses the wasm entry point to a single `run()` that wires
+  host imports into those helpers. 27 host-side unit tests
+  exercise every transformation; six integration tests in
+  `crates/plugin-host/tests/zotero_e2e.rs` load the compiled
+  Component, install a deterministic mock BetterBibTeX
+  responder, and assert end-to-end behaviour (APA + Harvard
+  rendering, dedup, missing-key tolerance, empty-doc bib block,
+  style-change re-render, panel reporting). Mutation kill rate
+  on the plugin: 47/48 viable (97.9%); the single survivor is
+  the wasm-only `run()` body which is exercised by the host
+  E2E suite.
+
 - Phase 5.3 — plugin host (capability-sandboxed WASM Component
   loader). `crates/plugin-host` ships `Host`, `Plugin`, `Grants`,
   `Capability` (DocRead / DocWrite / UiPanel / NetHttp), `Quota`,

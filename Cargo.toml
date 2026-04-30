@@ -14,6 +14,7 @@ members = [
     "crates/plugin-host",
     "examples/plugin-full-fixture",
     "examples/plugin-word-counter",
+    "examples/plugin-zotero",
 ]
 
 [workspace.package]

@@ -57,6 +57,7 @@ const DOC_INTERFACE: &str = "apalabrar:editor/doc@0.1.0";
 const DOC_MUT_INTERFACE: &str = "apalabrar:editor/doc-mut@0.1.0";
 const UI_INTERFACE: &str = "apalabrar:editor/ui@0.1.0";
 const NET_INTERFACE: &str = "apalabrar:editor/net@0.1.0";
+const CITE_INTERFACE: &str = "apalabrar:editor/cite@0.1.0";
 const PLUGIN_INTERFACE: &str = "apalabrar:editor/plugin@0.1.0";
 
 impl Plugin {
@@ -123,6 +124,29 @@ impl Plugin {
                  -> wasmtime::Result<(std::result::Result<String, String>,)> {
                     let r = (ctx.data().http_responder)(&url, &method);
                     Ok((r,))
+                },
+            )
+            .expect("func_wrap is infallible for distinct function names");
+        }
+        if grants.contains(Capability::CiteRender) {
+            let mut inst = linker
+                .instance(CITE_INTERFACE)
+                .expect("linker name uniqueness is enforced by capability gating");
+            inst.func_wrap(
+                "format-bib",
+                |_ctx: wasmtime::StoreContextMut<'_, HostState>,
+                 (items_json, style): (String, String)|
+                 -> wasmtime::Result<(std::result::Result<String, String>,)> {
+                    Ok((format_bib_from_json(&items_json, &style),))
+                },
+            )
+            .expect("func_wrap is infallible for distinct function names");
+            inst.func_wrap(
+                "format-inline",
+                |_ctx: wasmtime::StoreContextMut<'_, HostState>,
+                 (item_json, style): (String, String)|
+                 -> wasmtime::Result<(std::result::Result<String, String>,)> {
+                    Ok((format_inline_from_json(&item_json, &style),))
                 },
             )
             .expect("func_wrap is infallible for distinct function names");
@@ -199,6 +223,18 @@ impl Plugin {
     }
 }
 
+fn format_bib_from_json(items_json: &str, style: &str) -> std::result::Result<String, String> {
+    let items: Vec<apalabrar_citation::CslItem> =
+        serde_json::from_str(items_json).map_err(|e| format!("invalid items JSON: {e}"))?;
+    apalabrar_citation::render_bib(&items, style).map_err(|e| format!("render error: {e}"))
+}
+
+fn format_inline_from_json(item_json: &str, style: &str) -> std::result::Result<String, String> {
+    let item: apalabrar_citation::CslItem =
+        serde_json::from_str(item_json).map_err(|e| format!("invalid item JSON: {e}"))?;
+    apalabrar_citation::render_inline(&item, style).map_err(|e| format!("render error: {e}"))
+}
+
 fn classify_link_error(e: &anyhow::Error, grants: Grants) -> Error {
     let msg = e.to_string();
     for (interface, cap) in [
@@ -206,6 +242,7 @@ fn classify_link_error(e: &anyhow::Error, grants: Grants) -> Error {
         (DOC_MUT_INTERFACE, Capability::DocWrite),
         (UI_INTERFACE, Capability::UiPanel),
         (NET_INTERFACE, Capability::NetHttp),
+        (CITE_INTERFACE, Capability::CiteRender),
     ] {
         if msg.contains(interface) && !grants.contains(cap) {
             return Error::CapabilityDenied(cap);

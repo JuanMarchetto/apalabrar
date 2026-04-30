@@ -182,6 +182,24 @@ fn plugin_importing_unknown_interface_wat() -> &'static str {
 "#
 }
 
+/// A Component that imports the cite interface — used for the
+/// CiteRender denial path.
+fn plugin_importing_cite_wat() -> &'static str {
+    r#"
+(component
+  (import "apalabrar:editor/cite@0.1.0" (instance $c
+    (export "format-bib" (func (param "items-json" string) (param "style" string) (result (result string (error string)))))
+    (export "format-inline" (func (param "item-json" string) (param "style" string) (result (result string (error string)))))
+  ))
+  (core module $m (func (export "run")))
+  (core instance $i (instantiate $m))
+  (func $run-lifted (canon lift (core func $i "run")))
+  (instance $exports (export "run" (func $run-lifted)))
+  (export "apalabrar:editor/plugin@0.1.0" (instance $exports))
+)
+"#
+}
+
 /// A Component whose `run` core function spins forever — used
 /// to test fuel exhaustion.
 fn infinite_loop_plugin_wat() -> &'static str {
@@ -438,6 +456,40 @@ fn run_traps_oob_memory_read_as_memory_exceeded() {
         .unwrap();
     let r = p.run();
     assert!(matches!(r, Err(Error::MemoryExceeded)), "got: {:?}", r);
+}
+
+#[test]
+fn cite_render_denied_when_not_granted() {
+    let host = Host::new().unwrap();
+    let bytes = wat::parse_str(plugin_importing_cite_wat()).unwrap();
+    let r = host.load(
+        &bytes,
+        &manifest_with(vec![Capability::CiteRender]),
+        Grants::empty(),
+        Quota::small(),
+    );
+    assert!(
+        matches!(r, Err(Error::CapabilityDenied(Capability::CiteRender))),
+        "unexpected: {:?}",
+        r.err()
+    );
+}
+
+#[test]
+fn cite_render_succeeds_when_granted() {
+    let host = Host::new().unwrap();
+    let bytes = wat::parse_str(plugin_importing_cite_wat()).unwrap();
+    let plugin = host.load(
+        &bytes,
+        &manifest_with(vec![Capability::CiteRender]),
+        Grants::empty().allow(Capability::CiteRender),
+        Quota::small(),
+    );
+    assert!(
+        plugin.is_ok(),
+        "expected granted load to succeed: {:?}",
+        plugin.err()
+    );
 }
 
 #[test]

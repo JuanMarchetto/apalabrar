@@ -10,6 +10,7 @@ description = "Plugin host — WASM Component Model loader with capability sandb
 
 [dependencies]
 anyhow.workspace = true
+apalabrar-citation.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
