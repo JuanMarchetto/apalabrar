@@ -38,7 +38,9 @@ use serde::{Deserialize, Serialize};
 
 pub mod assets;
 pub mod ast;
+pub mod ir;
 pub mod parser;
+pub mod renderer;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -291,32 +293,77 @@ pub fn render_inline(item: &CslItem, style: &str) -> Result<String, Error> {
 
 /// Render a bibliography with explicit locale + output format.
 pub fn render_bib_with<F: OutputFormat>(
-    _items: &[CslItem],
+    items: &[CslItem],
     style: &str,
     locale: &str,
-    _format: &F,
+    format: &F,
 ) -> Result<String, Error> {
-    let _style_xml = assets::style_xml(style).ok_or_else(|| Error::UnknownStyle(style.into()))?;
-    let _locale_xml =
-        assets::locale_xml(locale).ok_or_else(|| Error::UnknownLocale(locale.into()))?;
-    // Phase 5.2-impl/parser landed lookup + parse; renderer ships in
-    // the next session. Until then, recognised inputs panic via
-    // todo!() — the test suite has #[ignore] markers on the affected
-    // tests so the suite stays green.
-    todo!("Phase 5.2-impl/renderer: walk Style AST + CslItem to produce IR")
+    let parsed_style = compile_style(style)?;
+    let parsed_locale = compile_locale(locale)?;
+    if items.is_empty() {
+        return Ok(String::new());
+    }
+    let layout = parsed_style
+        .bibliography
+        .as_ref()
+        .map(|b| &b.layout)
+        .unwrap_or(&parsed_style.citation.layout);
+    let mut entries: Vec<String> = Vec::with_capacity(items.len());
+    for (idx, item) in items.iter().enumerate() {
+        let mut ctx = renderer::RenderContext {
+            style: &parsed_style,
+            locale: &parsed_locale,
+            item,
+            position: idx + 1,
+            macro_depth: 0,
+            group_scopes: Vec::new(),
+        };
+        let tokens = renderer::render_layout(&mut ctx, layout);
+        entries.push(ir::serialize(&tokens, format));
+    }
+    Ok(entries.join("\n"))
 }
 
 /// Render an in-text citation with explicit locale + output format.
 pub fn render_inline_with<F: OutputFormat>(
-    _item: &CslItem,
+    item: &CslItem,
     style: &str,
     locale: &str,
-    _format: &F,
+    format: &F,
 ) -> Result<String, Error> {
-    let _style_xml = assets::style_xml(style).ok_or_else(|| Error::UnknownStyle(style.into()))?;
-    let _locale_xml =
-        assets::locale_xml(locale).ok_or_else(|| Error::UnknownLocale(locale.into()))?;
-    todo!("Phase 5.2-impl/renderer: walk Style AST + CslItem to produce IR")
+    let parsed_style = compile_style(style)?;
+    let parsed_locale = compile_locale(locale)?;
+    let mut ctx = renderer::RenderContext {
+        style: &parsed_style,
+        locale: &parsed_locale,
+        item,
+        position: 1,
+        macro_depth: 0,
+        group_scopes: Vec::new(),
+    };
+    let tokens = renderer::render_layout(&mut ctx, &parsed_style.citation.layout);
+    Ok(ir::serialize(&tokens, format))
+}
+
+/// Parse a bundled style XML to AST. Phase 5.2-impl/renderer-1
+/// parses on every call; the thread-local cache lands in
+/// Phase 5.2-impl/locale.
+fn compile_style(id: &str) -> Result<ast::Style, Error> {
+    let xml = assets::style_xml(id).ok_or_else(|| Error::UnknownStyle(id.into()))?;
+    parser::parse_style(xml, id).map_err(|e| Error::MalformedStyle {
+        style: id.into(),
+        reason: e.to_string(),
+    })
+}
+
+/// Parse a bundled locale XML to AST. Same caching note as
+/// `compile_style`.
+fn compile_locale(id: &str) -> Result<ast::Locale, Error> {
+    let xml = assets::locale_xml(id).ok_or_else(|| Error::UnknownLocale(id.into()))?;
+    parser::parse_locale(xml).map_err(|e| Error::MalformedLocale {
+        locale: id.into(),
+        reason: e.to_string(),
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────

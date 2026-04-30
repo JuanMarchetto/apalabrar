@@ -1,0 +1,6 @@
+---
+source: crates/citation/tests/citation.rs
+assertion_line: 162
+expression: bib
+---
+Smith, John. (2020). On the nature of typesetting. <i>Journal of Typography</i>, <i>12</i>(3), 123-145. https://doi.org/10.1000/typo.2020.12345

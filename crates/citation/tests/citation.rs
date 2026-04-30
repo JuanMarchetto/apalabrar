@@ -155,7 +155,7 @@ fn non_latin_authors() -> CslItem {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
+
 fn render_bib_apa_journal_article_snapshot() {
     let bib =
         render_bib(&[journal_article_single_author()], "apa").expect("APA render must succeed");
@@ -163,7 +163,6 @@ fn render_bib_apa_journal_article_snapshot() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_bib_ieee_journal_article_snapshot() {
     let bib =
         render_bib(&[journal_article_single_author()], "ieee").expect("IEEE render must succeed");
@@ -198,7 +197,7 @@ fn render_bib_chicago_notes_book_chapter_snapshot() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
+
 fn render_inline_apa_is_author_year_form() {
     let cite =
         render_inline(&journal_article_single_author(), "apa").expect("APA inline must succeed");
@@ -208,7 +207,6 @@ fn render_inline_apa_is_author_year_form() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_inline_ieee_is_numeric_bracket_form() {
     let cite =
         render_inline(&journal_article_single_author(), "ieee").expect("IEEE inline must succeed");
@@ -262,7 +260,7 @@ fn render_inline_chicago_notes_is_full_footnote() {
 // ─────────────────────────────────────────────────────────────────
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
+
 fn render_bib_renders_italic_journal_titles_in_apa() {
     // APA italicises journal container titles. The HTML output must
     // wrap "Journal of Typography" in <i>.
@@ -298,7 +296,7 @@ fn render_bib_uses_abbreviated_journal_in_ama() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
+
 fn render_bib_emits_doi_link_when_doi_present() {
     let bib = render_bib(&[journal_article_single_author()], "apa").unwrap();
     assert!(
@@ -320,7 +318,6 @@ fn render_bib_uses_substitute_to_title_when_author_missing() {
 }
 
 #[test]
-#[ignore = "Phase 5.2-impl: GREEN ships in follow-up sessions"]
 fn render_inline_ieee_numbering_is_sequential_across_render_bib() {
     // IEEE numbers items 1, 2, 3, ... in the order they appear in
     // the input slice. Bibliography must reflect this.
