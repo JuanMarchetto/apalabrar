@@ -170,6 +170,23 @@ impl From<find::Match> for MatchJson {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Phase 4.6 — Comments accessor (JSON wrapper for the wasm bridge)
+// ─────────────────────────────────────────────────────────────────
+
+/// All comment threads in the doc, JSON-encoded as a `Comment[]`.
+/// The shape matches the TypeScript `Comment` interface in
+/// `packages/editor-bridge/src/core.ts`. Threads are returned sorted
+/// by `thread_id` (matches `Doc::comments()`).
+pub fn comments_json(doc_id: DocId) -> Result<String, Error> {
+    let reg = registry()
+        .lock()
+        .expect("registry mutex must not be poisoned");
+    let entry = reg.get(&doc_id.0).ok_or(Error::UnknownDoc(doc_id))?;
+    let threads = entry.doc.comments();
+    Ok(serialize_or_panic(&threads))
+}
+
 /// Find all non-overlapping matches; return them as a JSON array.
 /// Errors propagate as [`Error::JsonParseFailed`] (malformed
 /// `opts_json`) or [`Error::UnknownDoc`] (registry miss).
@@ -217,6 +234,8 @@ fn edit_op_kind(op: &EditOp) -> &'static str {
         EditOp::SplitBlock { .. } => "SplitBlock",
         EditOp::MergeBlocks { .. } => "MergeBlocks",
         EditOp::InsertComment { .. } => "InsertComment",
+        EditOp::ReplyToComment { .. } => "ReplyToComment",
+        EditOp::SetCommentStatus { .. } => "SetCommentStatus",
         EditOp::Suggest { .. } => "Suggest",
         EditOp::AcceptSuggestion { .. } => "AcceptSuggestion",
         EditOp::InsertCitation { .. } => "InsertCitation",
@@ -238,7 +257,7 @@ mod wasm_api {
     use wasm_bindgen::prelude::*;
 
     use crate::bridge::{
-        apply_edit_op_json, block_at_json, block_count, create_doc, find_json,
+        apply_edit_op_json, block_at_json, block_count, comments_json, create_doc, find_json,
         restore_from_snapshot, snapshot,
     };
     use crate::{DocId, Error, close_doc, doc_text};
@@ -290,5 +309,10 @@ mod wasm_api {
     #[wasm_bindgen(js_name = findInDoc)]
     pub fn js_find_in_doc(doc_id: u64, needle: &str, opts_json: &str) -> Result<String, JsValue> {
         find_json(DocId(doc_id), needle, opts_json).map_err(err)
+    }
+
+    #[wasm_bindgen(js_name = commentsInDoc)]
+    pub fn js_comments_in_doc(doc_id: u64) -> Result<String, JsValue> {
+        comments_json(DocId(doc_id)).map_err(err)
     }
 }

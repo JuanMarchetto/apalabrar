@@ -45,6 +45,10 @@ export interface BlockTree {
   blocks: Block[];
 }
 
+/** Phase 4.6 — comment thread lifecycle. Matches Rust serde
+ * `#[serde(rename_all = "lowercase")] CommentStatus`. */
+export type CommentStatus = 'open' | 'resolved';
+
 export type EditOp =
   | { kind: 'InsertText'; at: Position; text: string; marks: Mark[]; }
   | { kind: 'DeleteRange'; from: Position; to: Position; }
@@ -58,11 +62,45 @@ export type EditOp =
     to: Position;
     body: string;
     thread_id: string | null;
+    author: string;
+    /** Epoch milliseconds. */
+    created_at: number;
   }
+  | {
+    kind: 'ReplyToComment';
+    thread_id: string;
+    body: string;
+    author: string;
+    /** Epoch milliseconds. */
+    created_at: number;
+  }
+  | { kind: 'SetCommentStatus'; thread_id: string; status: CommentStatus; }
   | { kind: 'Suggest'; from: Position; to: Position; replacement: string; }
   | { kind: 'AcceptSuggestion'; suggestion_id: string; }
   | { kind: 'InsertCitation'; at: Position; key: string; }
   | { kind: 'InsertFootnote'; at: Position; body: BlockTree; };
+
+/** Phase 4.6 — one reply inside a comment thread. */
+export interface CommentReply {
+  id: string;
+  body: string;
+  author: string;
+  /** Epoch milliseconds. */
+  created_at: number;
+}
+
+/** Phase 4.6 — comment thread snapshot returned by `core.comment(id)`. */
+export interface Comment {
+  thread_id: string;
+  from: Position;
+  to: Position;
+  body: string;
+  author: string;
+  /** Epoch milliseconds. */
+  created_at: number;
+  status: CommentStatus;
+  replies: CommentReply[];
+}
 
 /// Branded handle returned by `createDoc` / `restoreFromSnapshot`.
 /// Wraps a `bigint` (the wasm-bindgen u64 representation) so
@@ -87,6 +125,8 @@ export interface ApalabrarCoreWasm {
   bridgeCloseDoc(docId: bigint): void;
   /** Phase 4.5 — returns a JSON-encoded `MatchJson[]`. */
   findInDoc(docId: bigint, needle: string, optsJson: string): string;
+  /** Phase 4.6 — returns a JSON-encoded `Comment[]`. */
+  commentsInDoc(docId: bigint): string;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -173,5 +213,14 @@ export class ApalabrarCore {
   find(id: CoreDocId, needle: string, opts: FindOptions): Match[] {
     const json = this.wasm.findInDoc(id, needle, JSON.stringify(opts));
     return JSON.parse(json) as Match[];
+  }
+
+  /**
+   * Phase 4.6 — list every comment thread in the doc, sorted by
+   * thread_id. Returns the snapshot type [`Comment`] which includes
+   * status + replies.
+   */
+  comments(id: CoreDocId): Comment[] {
+    return JSON.parse(this.wasm.commentsInDoc(id)) as Comment[];
   }
 }

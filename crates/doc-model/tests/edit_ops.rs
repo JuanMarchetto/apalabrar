@@ -1050,6 +1050,8 @@ fn insert_comment_with_explicit_thread_id_stores_record() {
         to: 5,
         body: "fix this".into(),
         thread_id: Some("t-explicit".into()),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let c = d.comment("t-explicit").expect("comment present");
@@ -1068,6 +1070,8 @@ fn insert_comment_without_thread_id_generates_one() {
         to: 2,
         body: "review".into(),
         thread_id: None,
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let assigned = d
@@ -1092,6 +1096,8 @@ fn insert_comment_assigns_strictly_increasing_counter_suffixes() {
             to: 0,
             body: "x".into(),
             thread_id: None,
+            author: "tester".into(),
+            created_at: 0,
         })
         .unwrap();
         let id = d.last_comment_thread_id().unwrap();
@@ -1124,6 +1130,8 @@ fn insert_comment_generates_unique_ids_across_calls() {
             to: 1,
             body: "body".into(),
             thread_id: None,
+            author: "tester".into(),
+            created_at: 0,
         })
         .unwrap();
         ids.push(d.last_comment_thread_id().unwrap());
@@ -1142,6 +1150,8 @@ fn insert_comment_explicit_id_overrides_generated() {
         to: 1,
         body: "body".into(),
         thread_id: Some("user-supplied".into()),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     assert_eq!(d.last_comment_thread_id().as_deref(), Some("user-supplied"));
@@ -1156,6 +1166,8 @@ fn insert_comment_lists_thread_id() {
         to: 1,
         body: "body".into(),
         thread_id: Some("thread-1".into()),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     d.apply_edit_op(EditOp::InsertComment {
@@ -1163,6 +1175,8 @@ fn insert_comment_lists_thread_id() {
         to: 1,
         body: "second".into(),
         thread_id: Some("thread-2".into()),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let mut ids = d.comment_thread_ids();
@@ -1186,6 +1200,8 @@ fn insert_comment_preserves_latam_codepoints_in_body() {
         to: 3,
         body: "ñoño año mañana".into(),
         thread_id: Some("ñ".into()),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let c = d.comment("ñ").unwrap();
@@ -1392,6 +1408,8 @@ fn snapshot_round_trip_preserves_comments() {
         to: 5,
         body: "review".into(),
         thread_id: Some("t1".into()),
+        author: "tester".into(),
+        created_at: 0,
     })
     .unwrap();
     let snap = d.snapshot();
@@ -1499,6 +1517,8 @@ proptest! {
             d.apply_edit_op(EditOp::InsertComment {
                 from: 0, to: 1, body: "b".into(),
                 thread_id: Some(format!("thread-{i}")),
+                author: "tester".into(),
+                created_at: 0,
             }).unwrap();
         }
         prop_assert_eq!(d.comment_thread_ids().len(), n);

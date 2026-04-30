@@ -249,6 +249,8 @@ fn apply_edit_op_insert_comment_with_explicit_thread_id() {
             to: 1,
             body: "review".into(),
             thread_id: Some("t-1".into()),
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();

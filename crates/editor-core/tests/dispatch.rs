@@ -454,6 +454,8 @@ fn insert_comment_dirty_covers_anchor_range_no_structural_with_minted_id() {
             to: 5,
             body: "first thoughts".into(),
             thread_id: None,
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
@@ -477,10 +479,149 @@ fn insert_comment_spanning_two_blocks_dirty_covers_both() {
             to: 4,
             body: "x".into(),
             thread_id: None,
+            author: "tester".into(),
+            created_at: 0,
         },
     )
     .unwrap();
     assert_eq!(delta.dirty_blocks, BlockRange { start: 0, end: 2 });
+}
+
+// -----------------------------------------------------------------------------
+// ReplyToComment + SetCommentStatus (Phase 4.6)
+// -----------------------------------------------------------------------------
+
+#[test]
+fn dispatch_reply_to_comment_emits_reply_minted_id_with_anchor_dirty_range() {
+    let mut d = doc_with("hello world");
+    // Seed a thread first.
+    dispatch(
+        &mut d,
+        EditOp::InsertComment {
+            from: 0,
+            to: 5,
+            body: "head".into(),
+            thread_id: Some("t-1".into()),
+            author: "alice".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    let delta = dispatch(
+        &mut d,
+        EditOp::ReplyToComment {
+            thread_id: "t-1".into(),
+            body: "hi".into(),
+            author: "bob".into(),
+            created_at: 2,
+        },
+    )
+    .unwrap();
+    // Reply doesn't change text or block count.
+    assert!(!delta.structural);
+    assert_eq!(delta.caret_hint, None);
+    // dirty_blocks covers the parent thread anchor (block 0 only).
+    assert_eq!(delta.dirty_blocks, BlockRange { start: 0, end: 1 });
+    let id = match delta.minted_id {
+        Some(MintedId::Reply(s)) => s,
+        other => panic!("expected MintedId::Reply, got {other:?}"),
+    };
+    assert!(!id.is_empty());
+}
+
+#[test]
+fn dispatch_reply_to_unknown_thread_propagates_edit_op_failed() {
+    let mut d = doc_with("x");
+    let err = dispatch(
+        &mut d,
+        EditOp::ReplyToComment {
+            thread_id: "t-bogus".into(),
+            body: "x".into(),
+            author: "x".into(),
+            created_at: 0,
+        },
+    )
+    .unwrap_err();
+    match err {
+        Error::EditOpFailed { kind, .. } => assert_eq!(kind, "ReplyToComment"),
+        other => panic!("expected EditOpFailed, got {other:?}"),
+    }
+}
+
+#[test]
+fn dispatch_set_comment_status_emits_no_minted_id_with_anchor_dirty_range() {
+    let mut d = doc_with("hello world");
+    dispatch(
+        &mut d,
+        EditOp::InsertComment {
+            from: 6,
+            to: 11,
+            body: "head".into(),
+            thread_id: Some("t-1".into()),
+            author: "alice".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    let delta = dispatch(
+        &mut d,
+        EditOp::SetCommentStatus {
+            thread_id: "t-1".into(),
+            status: apalabrar_doc_model::CommentStatus::Resolved,
+        },
+    )
+    .unwrap();
+    assert!(!delta.structural);
+    assert_eq!(delta.minted_id, None);
+    // Anchor was on block 0 (single-paragraph doc).
+    assert_eq!(delta.dirty_blocks, BlockRange { start: 0, end: 1 });
+}
+
+#[test]
+fn dispatch_set_comment_status_unknown_thread_propagates_error() {
+    let mut d = doc_with("x");
+    let err = dispatch(
+        &mut d,
+        EditOp::SetCommentStatus {
+            thread_id: "t-bogus".into(),
+            status: apalabrar_doc_model::CommentStatus::Resolved,
+        },
+    )
+    .unwrap_err();
+    match err {
+        Error::EditOpFailed { kind, .. } => assert_eq!(kind, "SetCommentStatus"),
+        other => panic!("expected EditOpFailed, got {other:?}"),
+    }
+}
+
+#[test]
+fn dispatch_reply_to_comment_in_multi_block_uses_parent_anchor_blocks() {
+    // Comment anchored on block 1 (the "world" block, after the \n);
+    // a reply must dirty block 1 ONLY, not block 0.
+    let mut d = doc_with("hello\nworld");
+    dispatch(
+        &mut d,
+        EditOp::InsertComment {
+            from: 6,
+            to: 11,
+            body: "head".into(),
+            thread_id: Some("t-1".into()),
+            author: "a".into(),
+            created_at: 0,
+        },
+    )
+    .unwrap();
+    let delta = dispatch(
+        &mut d,
+        EditOp::ReplyToComment {
+            thread_id: "t-1".into(),
+            body: "r".into(),
+            author: "b".into(),
+            created_at: 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(delta.dirty_blocks, BlockRange { start: 1, end: 2 });
 }
 
 // -----------------------------------------------------------------------------
@@ -774,6 +915,8 @@ fn arb_op() -> impl Strategy<Value = EditOp> {
                 to,
                 body,
                 thread_id: None,
+                author: "tester".into(),
+                created_at: 0,
             }
         }),
         (0usize..40, 0usize..40, "[a-z\n]{0,6}").prop_map(|(from, to, replacement)| {

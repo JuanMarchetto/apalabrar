@@ -69,6 +69,8 @@ pub enum MintedId {
     Suggestion(String),
     Citation(String),
     Footnote(String),
+    /// Phase 4.6 — id of a reply minted by `EditOp::ReplyToComment`.
+    Reply(String),
 }
 
 /// What the dispatcher tells the renderer after applying an op.
@@ -250,6 +252,8 @@ pub fn dispatch(doc: &mut Doc, op: EditOp) -> Result<RenderDelta, Error> {
             to,
             body,
             thread_id,
+            author,
+            created_at,
         } => {
             let pre_text = doc.text();
             let pre_len = pre_text.chars().count();
@@ -265,6 +269,8 @@ pub fn dispatch(doc: &mut Doc, op: EditOp) -> Result<RenderDelta, Error> {
                     to,
                     body,
                     thread_id,
+                    author,
+                    created_at,
                 },
                 kind,
             )?;
@@ -280,6 +286,67 @@ pub fn dispatch(doc: &mut Doc, op: EditOp) -> Result<RenderDelta, Error> {
                 structural: false,
                 caret_hint: None,
                 minted_id: Some(MintedId::Comment(id)),
+            })
+        }
+        EditOp::ReplyToComment {
+            thread_id,
+            body,
+            author,
+            created_at,
+        } => {
+            // Phase 4.6 — RenderDelta for a reply: no text mutation, no
+            // structural change, no caret movement. The dirty_blocks
+            // range matches the parent thread's anchor so the renderer
+            // can re-paint any badge / count overlay on the thread.
+            let parent_range = doc
+                .comment(&thread_id)
+                .map(|c| (c.from, c.to))
+                .unwrap_or((0, 0));
+            apply(
+                doc,
+                EditOp::ReplyToComment {
+                    thread_id,
+                    body,
+                    author,
+                    created_at,
+                },
+                kind,
+            )?;
+            let pre_text = doc.text();
+            let block_lo = block_idx_at(&pre_text, parent_range.0);
+            let block_hi = block_idx_at(&pre_text, parent_range.1);
+            let id = doc
+                .last_reply_id()
+                .expect("doc-model contract: ReplyToComment Ok ⇒ last_reply_id Some");
+            Ok(RenderDelta {
+                dirty_blocks: BlockRange {
+                    start: block_lo,
+                    end: block_hi + 1,
+                },
+                structural: false,
+                caret_hint: None,
+                minted_id: Some(MintedId::Reply(id)),
+            })
+        }
+        EditOp::SetCommentStatus { thread_id, status } => {
+            // Phase 4.6 — same dirty-block range as the parent thread's
+            // anchor so the badge re-paints.
+            let parent_range = doc
+                .comment(&thread_id)
+                .map(|c| (c.from, c.to))
+                .unwrap_or((0, 0));
+            apply(doc, EditOp::SetCommentStatus { thread_id, status }, kind)?;
+            let pre_text = doc.text();
+            let block_lo = block_idx_at(&pre_text, parent_range.0);
+            let block_hi = block_idx_at(&pre_text, parent_range.1);
+            Ok(RenderDelta {
+                dirty_blocks: BlockRange {
+                    start: block_lo,
+                    end: block_hi + 1,
+                },
+                structural: false,
+                caret_hint: None,
+                minted_id: None,
             })
         }
         EditOp::Suggest {
@@ -432,6 +499,8 @@ fn edit_op_kind(op: &EditOp) -> &'static str {
         EditOp::SplitBlock { .. } => "SplitBlock",
         EditOp::MergeBlocks { .. } => "MergeBlocks",
         EditOp::InsertComment { .. } => "InsertComment",
+        EditOp::ReplyToComment { .. } => "ReplyToComment",
+        EditOp::SetCommentStatus { .. } => "SetCommentStatus",
         EditOp::Suggest { .. } => "Suggest",
         EditOp::AcceptSuggestion { .. } => "AcceptSuggestion",
         EditOp::InsertCitation { .. } => "InsertCitation",

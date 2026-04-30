@@ -71,6 +71,13 @@ class WasmMock implements ApalabrarCoreWasm {
     this.record('findInDoc', [docId, needle, optsJson]);
     return this.findResultJson;
   }
+
+  commentsResultJson = '[]';
+
+  commentsInDoc(docId: bigint): string {
+    this.record('commentsInDoc', [docId]);
+    return this.commentsResultJson;
+  }
 }
 
 describe('ApalabrarCore', () => {
@@ -200,6 +207,36 @@ describe('ApalabrarCore', () => {
       });
     });
 
+    it('serializes ReplyToComment with explicit thread_id', () => {
+      const json = dispatched({
+        kind: 'ReplyToComment',
+        thread_id: 't-1',
+        body: 'agreed',
+        author: 'bob',
+        created_at: 12345,
+      });
+      expect(JSON.parse(json)).toEqual({
+        kind: 'ReplyToComment',
+        thread_id: 't-1',
+        body: 'agreed',
+        author: 'bob',
+        created_at: 12345,
+      });
+    });
+
+    it('serializes SetCommentStatus with lowercase status code', () => {
+      const json = dispatched({
+        kind: 'SetCommentStatus',
+        thread_id: 't-1',
+        status: 'resolved',
+      });
+      expect(JSON.parse(json)).toEqual({
+        kind: 'SetCommentStatus',
+        thread_id: 't-1',
+        status: 'resolved',
+      });
+    });
+
     it('serializes InsertComment with explicit thread_id', () => {
       const json = dispatched({
         kind: 'InsertComment',
@@ -207,6 +244,8 @@ describe('ApalabrarCore', () => {
         to: 5,
         body: 'review',
         thread_id: 't-1',
+        author: 'tester',
+        created_at: 0,
       });
       expect(JSON.parse(json)).toEqual({
         kind: 'InsertComment',
@@ -214,6 +253,8 @@ describe('ApalabrarCore', () => {
         to: 5,
         body: 'review',
         thread_id: 't-1',
+        author: 'tester',
+        created_at: 0,
       });
     });
 
@@ -359,6 +400,35 @@ describe('ApalabrarCore', () => {
     });
   });
 
+  describe('comments (Phase 4.6)', () => {
+    it('parses the wasm JSON into a typed Comment[] including replies', () => {
+      const wasm = new WasmMock();
+      wasm.commentsResultJson = JSON.stringify([
+        {
+          thread_id: 't-1',
+          from: 0,
+          to: 5,
+          body: 'head',
+          author: 'alice',
+          created_at: 1,
+          status: 'open',
+          replies: [
+            { id: 'r-1', body: 'agreed', author: 'bob', created_at: 2 },
+          ],
+        },
+      ]);
+      const core = new ApalabrarCore(wasm);
+      const id = core.createDoc();
+      const threads = core.comments(id);
+      expect(threads).toHaveLength(1);
+      expect(threads[0]?.thread_id).toBe('t-1');
+      expect(threads[0]?.status).toBe('open');
+      expect(threads[0]?.replies).toEqual([
+        { id: 'r-1', body: 'agreed', author: 'bob', created_at: 2 },
+      ]);
+    });
+  });
+
   describe('properties', () => {
     it('any EditOp serialises to JSON that round-trips through parse', () => {
       fc.assert(
@@ -430,6 +500,8 @@ function arbitraryEditOp(): fc.Arbitrary<EditOp> {
         to: pos,
         body: fc.string({ maxLength: 12 }),
         thread_id: fc.option(fc.string({ minLength: 1, maxLength: 8 })),
+        author: fc.string({ maxLength: 8 }),
+        created_at: fc.integer({ min: 0, max: 4_102_444_800_000 }),
       })
       .map<EditOp>((r) => ({ kind: 'InsertComment', ...r })),
     fc

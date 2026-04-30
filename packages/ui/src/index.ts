@@ -24,6 +24,9 @@ export type {
   CommentThread,
 } from './components/CommentsSidebar';
 
+export { CommentsSheet } from './components/CommentsSheet';
+export type { CommentsSheetProps } from './components/CommentsSheet';
+
 export { FindReplaceBar } from './components/FindReplaceBar';
 export type { FindReplaceBarProps } from './components/FindReplaceBar';
 

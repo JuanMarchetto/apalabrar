@@ -4,8 +4,8 @@
 use std::ops::Range;
 
 use loro::{
-    Container, ExportMode, LoroDoc, LoroListValue, LoroMap, LoroMapValue, LoroMovableList,
-    LoroText, LoroValue, TextDelta, ValueOrContainer,
+    Container, ExportMode, LoroDoc, LoroList, LoroListValue, LoroMap, LoroMapValue,
+    LoroMovableList, LoroText, LoroValue, TextDelta, ValueOrContainer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +47,8 @@ const META_KEY_NEXT_COMMENT: &str = "next_comment_id";
 const META_KEY_NEXT_SUGGESTION: &str = "next_suggestion_id";
 const META_KEY_NEXT_CITATION: &str = "next_citation_id";
 const META_KEY_NEXT_FOOTNOTE: &str = "next_footnote_id";
+/// Phase 4.6 — counter for reply ids inside comment threads.
+const META_KEY_NEXT_REPLY: &str = "next_reply_id";
 
 /// Sub-map field keys (kept private but defined as constants so
 /// `mutants` can't silently rename one without breaking tests).
@@ -60,11 +62,28 @@ const FIELD_KEY: &str = "key";
 const FIELD_BLOCKS: &str = "blocks";
 const FIELD_KIND: &str = "kind";
 const FIELD_TEXT: &str = "text";
+/// Phase 4.6 — comment metadata fields stored alongside the existing
+/// `from / to / body` keys in each thread's sub-LoroMap.
+const FIELD_AUTHOR: &str = "author";
+const FIELD_CREATED_AT: &str = "created_at";
+/// Comment thread status (`open` | `resolved`). Distinct key from
+/// `FIELD_STATE` (which carries suggestion lifecycle) so a future
+/// container that mixed both could not collide on key.
+const FIELD_STATUS: &str = "status";
+/// LoroList of reply sub-maps inside the thread sub-LoroMap.
+const FIELD_REPLIES: &str = "replies";
+/// Reply id stored alongside the reply's body/author/created_at —
+/// stable across reorders even though replies are a LoroList.
+const FIELD_REPLY_ID: &str = "id";
 
 /// Suggestion-state string codes (single source of truth).
 const STATE_PENDING: &str = "pending";
 const STATE_ACCEPTED: &str = "accepted";
 const STATE_REJECTED: &str = "rejected";
+
+/// Comment-status string codes (Phase 4.6). Single source of truth.
+const STATUS_OPEN: &str = "open";
+const STATUS_RESOLVED: &str = "resolved";
 
 /// Phase D marker codepoints. Both live in the Unicode private-use
 /// area so they cannot collide with anything a user might type or
@@ -170,6 +189,9 @@ pub struct Doc {
     /// Transient: id assigned by the most recent
     /// `apply_edit_op(InsertFootnote)` (Phase D).
     last_footnote_id: Option<String>,
+    /// Transient: reply id assigned by the most recent
+    /// `apply_edit_op(ReplyToComment)` (Phase 4.6).
+    last_reply_id: Option<String>,
 }
 
 impl Doc {
@@ -181,6 +203,7 @@ impl Doc {
             last_suggestion_id: None,
             last_citation_id: None,
             last_footnote_id: None,
+            last_reply_id: None,
         }
     }
 
@@ -261,6 +284,7 @@ impl Doc {
             last_suggestion_id: None,
             last_citation_id: None,
             last_footnote_id: None,
+            last_reply_id: None,
         }
     }
 
@@ -501,6 +525,10 @@ impl Doc {
     }
 
     /// Comment by thread_id, or `None` if absent / malformed.
+    ///
+    /// Old (pre-Phase-4.6) snapshots that lack `author`, `created_at`,
+    /// `status`, or `replies` decode with safe defaults: empty author,
+    /// `0` timestamp, `Open` status, no replies.
     pub fn comment(&self, thread_id: &str) -> Option<Comment> {
         let entry = match self.comments_map().get(thread_id) {
             Some(ValueOrContainer::Container(Container::Map(m))) => m,
@@ -509,12 +537,34 @@ impl Doc {
         let from = read_i64_field(&entry, FIELD_FROM)? as usize;
         let to = read_i64_field(&entry, FIELD_TO)? as usize;
         let body = read_string_field(&entry, FIELD_BODY)?;
+        let author = read_string_field(&entry, FIELD_AUTHOR).unwrap_or_default();
+        let created_at = read_i64_field(&entry, FIELD_CREATED_AT).unwrap_or(0);
+        let status = match read_string_field(&entry, FIELD_STATUS).as_deref() {
+            Some(s) if s == STATUS_RESOLVED => CommentStatus::Resolved,
+            _ => CommentStatus::Open,
+        };
+        let replies = read_replies(&entry);
         Some(Comment {
             thread_id: thread_id.to_string(),
             from,
             to,
             body,
+            author,
+            created_at,
+            status,
+            replies,
         })
+    }
+
+    /// Phase 4.6 — every comment thread in the doc, sorted by id.
+    /// Built on `comment_thread_ids` + `comment` to share the malformed-
+    /// entry handling. Excludes any thread whose record fails to
+    /// decode (`comment` returned `None`).
+    pub fn comments(&self) -> Vec<Comment> {
+        self.comment_thread_ids()
+            .into_iter()
+            .filter_map(|id| self.comment(&id))
+            .collect()
     }
 
     /// Sorted IDs of every suggestion (any state).
@@ -566,6 +616,13 @@ impl Doc {
     /// when the caller passed `thread_id: None`.
     pub fn last_comment_thread_id(&self) -> Option<String> {
         self.last_comment_thread_id.clone()
+    }
+
+    /// Phase 4.6 — reply id assigned by the most recent
+    /// `apply_edit_op(ReplyToComment)`. Same transient lifetime as
+    /// `last_comment_thread_id` — read immediately after the op.
+    pub fn last_reply_id(&self) -> Option<String> {
+        self.last_reply_id.clone()
     }
 
     /// The id assigned by the most recent `Suggest` applied to this
@@ -719,6 +776,37 @@ fn read_string_field(entry: &LoroMap, key: &str) -> Option<String> {
     }
 }
 
+/// Phase 4.6 — decode the `replies` LoroList stored under a thread
+/// sub-LoroMap into a `Vec<CommentReply>`. Missing list (older
+/// snapshot) → empty Vec. Malformed entries (not a sub-map) are
+/// skipped so a partial corruption doesn't drop the whole thread.
+/// List ordering is preserved — `LoroList::push_container` appends
+/// at the end and `LoroList::get(i)` is sequential.
+fn read_replies(thread_entry: &LoroMap) -> Vec<CommentReply> {
+    let list = match thread_entry.get(FIELD_REPLIES) {
+        Some(ValueOrContainer::Container(Container::List(l))) => l,
+        _ => return Vec::new(),
+    };
+    let mut out = Vec::with_capacity(list.len());
+    for i in 0..list.len() {
+        let map = match list.get(i) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => continue,
+        };
+        let id = read_string_field(&map, FIELD_REPLY_ID).unwrap_or_default();
+        let body = read_string_field(&map, FIELD_BODY).unwrap_or_default();
+        let author = read_string_field(&map, FIELD_AUTHOR).unwrap_or_default();
+        let created_at = read_i64_field(&map, FIELD_CREATED_AT).unwrap_or(0);
+        out.push(CommentReply {
+            id,
+            body,
+            author,
+            created_at,
+        });
+    }
+    out
+}
+
 /// Encode a `SuggestionState` as its canonical string. Phase C v0
 /// only ever writes `pending` or `accepted`; `rejected` is here for
 /// the future `RejectSuggestion` variant the blueprint will add.
@@ -814,17 +902,54 @@ pub struct BlockTree {
     pub blocks: Vec<Block>,
 }
 
-/// Snapshot of a comment thread anchored to a codepoint range
-/// (Phase C). Anchors are RAW positions — they go stale as the
-/// surrounding text is edited. Phase C+ will replace this with
-/// Loro-cursor-based stable anchors when the public Cursor API is
-/// available (loro 1.12 hides Cursor / Side from `pub use`).
+/// Lifecycle of a comment thread (Phase 4.6). New threads land in
+/// `Open`; `EditOp::SetCommentStatus` flips between Open and Resolved.
+/// Serialized as lowercase strings ("open" / "resolved") to match
+/// the JS-side `CommentStatus` literal union and the stored
+/// `FIELD_STATUS` value in Loro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CommentStatus {
+    Open,
+    Resolved,
+}
+
+/// One reply inside a `Comment` thread (Phase 4.6). Replies are
+/// stored as a LoroList of sub-LoroMaps under `FIELD_REPLIES` in the
+/// thread's sub-map; this struct is the snapshot type returned by
+/// `Doc::comment(id)`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommentReply {
+    pub id: String,
+    pub body: String,
+    pub author: String,
+    /// Epoch milliseconds. `i64` (not `u64`) so JS `Number`-safe and
+    /// negative pre-1970 values are representable for fixture / test
+    /// determinism.
+    pub created_at: i64,
+}
+
+/// Snapshot of a comment thread anchored to a codepoint range.
+///
+/// Anchors are RAW positions — they go stale as the surrounding text
+/// is edited. Stable anchors via Loro Cursor land when loro upstream
+/// makes the Cursor / Side API public; the v0 UI surfaces a "(stale)"
+/// badge when the anchored block was deleted.
+///
+/// Phase 4.6 added `author`, `created_at`, `status`, `replies`. Old
+/// snapshots that lack these fields decode as: `author = ""`,
+/// `created_at = 0`, `status = Open`, `replies = []`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Comment {
     pub thread_id: String,
     pub from: Position,
     pub to: Position,
     pub body: String,
+    pub author: String,
+    /// Epoch milliseconds; see [`CommentReply::created_at`].
+    pub created_at: i64,
+    pub status: CommentStatus,
+    pub replies: Vec<CommentReply>,
 }
 
 /// Lifecycle of a suggestion (Phase C). New suggestions land in
@@ -904,12 +1029,39 @@ pub enum EditOp {
     SplitBlock { at: Position },
     /// Merge two adjacent blocks (Phase B).
     MergeBlocks { first: Position, second: Position },
-    /// Anchor a comment thread to `[from, to)` (Phase C).
+    /// Anchor a comment thread to `[from, to)` (Phase C, extended in
+    /// Phase 4.6 with `author` and `created_at`).
+    ///
+    /// `thread_id`: `Some` to assign explicitly (migration / external
+    /// linkage); `None` to mint via `next_id` and surface through
+    /// `last_comment_thread_id()`.
     InsertComment {
         from: Position,
         to: Position,
         body: String,
         thread_id: Option<String>,
+        author: String,
+        /// Epoch milliseconds; see [`Comment::created_at`].
+        created_at: i64,
+    },
+    /// Append a reply to an existing comment thread (Phase 4.6).
+    /// Errors with [`Error::CommentNotFound`] if `thread_id` does not
+    /// match an existing thread. The reply id is minted via
+    /// `next_id` and surfaced through `last_reply_id()`.
+    ReplyToComment {
+        thread_id: String,
+        body: String,
+        author: String,
+        created_at: i64,
+    },
+    /// Set a comment thread's status (Phase 4.6). Used to resolve a
+    /// thread (`Resolved`) or reopen one (`Open`). Errors with
+    /// [`Error::CommentNotFound`] for unknown thread ids. Idempotent
+    /// for the same status (re-resolving a Resolved thread is a
+    /// no-op).
+    SetCommentStatus {
+        thread_id: String,
+        status: CommentStatus,
     },
     /// Propose a replacement for `[from, to)` without applying it
     /// (Phase C — track-changes).
@@ -945,6 +1097,11 @@ pub enum Error {
     /// any stored suggestion (or the stored entry was malformed).
     #[error("suggestion '{0}' not found")]
     SuggestionNotFound(String),
+    /// `ReplyToComment` / `SetCommentStatus` was called with a
+    /// thread_id that does not match any stored comment thread
+    /// (Phase 4.6).
+    #[error("comment thread '{0}' not found")]
+    CommentNotFound(String),
 }
 
 impl Doc {
@@ -986,7 +1143,18 @@ impl Doc {
                 to,
                 body,
                 thread_id,
-            } => self.handle_insert_comment(from, to, body, thread_id),
+                author,
+                created_at,
+            } => self.handle_insert_comment(from, to, body, thread_id, author, created_at),
+            EditOp::ReplyToComment {
+                thread_id,
+                body,
+                author,
+                created_at,
+            } => self.handle_reply_to_comment(thread_id, body, author, created_at),
+            EditOp::SetCommentStatus { thread_id, status } => {
+                self.handle_set_comment_status(thread_id, status)
+            }
             EditOp::Suggest {
                 from,
                 to,
@@ -1141,6 +1309,8 @@ impl Doc {
         to: Position,
         body: String,
         thread_id: Option<String>,
+        author: String,
+        created_at: i64,
     ) -> Result<(), Error> {
         let id = thread_id.unwrap_or_else(|| self.next_id("c", META_KEY_NEXT_COMMENT));
         let entry = self
@@ -1156,7 +1326,74 @@ impl Doc {
         entry
             .insert(FIELD_BODY, body)
             .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_AUTHOR, author)
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_CREATED_AT, LoroValue::I64(created_at))
+            .expect("loro map insert should not fail");
+        entry
+            .insert(FIELD_STATUS, STATUS_OPEN)
+            .expect("loro map insert should not fail");
         self.last_comment_thread_id = Some(id);
+        Ok(())
+    }
+
+    /// Phase 4.6 — append a reply to an existing thread. Returns
+    /// [`Error::CommentNotFound`] if no thread carries `thread_id`.
+    fn handle_reply_to_comment(
+        &mut self,
+        thread_id: String,
+        body: String,
+        author: String,
+        created_at: i64,
+    ) -> Result<(), Error> {
+        let thread_entry = match self.comments_map().get(&thread_id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return Err(Error::CommentNotFound(thread_id)),
+        };
+        let replies = thread_entry
+            .get_or_create_container(FIELD_REPLIES, LoroList::new())
+            .expect("loro get_or_create_container should not fail");
+        let reply_id = self.next_id("r", META_KEY_NEXT_REPLY);
+        let reply_map = replies
+            .push_container(LoroMap::new())
+            .expect("loro push_container should not fail");
+        reply_map
+            .insert(FIELD_REPLY_ID, reply_id.clone())
+            .expect("loro map insert should not fail");
+        reply_map
+            .insert(FIELD_BODY, body)
+            .expect("loro map insert should not fail");
+        reply_map
+            .insert(FIELD_AUTHOR, author)
+            .expect("loro map insert should not fail");
+        reply_map
+            .insert(FIELD_CREATED_AT, LoroValue::I64(created_at))
+            .expect("loro map insert should not fail");
+        self.last_reply_id = Some(reply_id);
+        Ok(())
+    }
+
+    /// Phase 4.6 — set a thread's status (open ↔ resolved). Returns
+    /// [`Error::CommentNotFound`] for unknown ids. Idempotent: setting
+    /// the same status twice is a successful no-op.
+    fn handle_set_comment_status(
+        &mut self,
+        thread_id: String,
+        status: CommentStatus,
+    ) -> Result<(), Error> {
+        let thread_entry = match self.comments_map().get(&thread_id) {
+            Some(ValueOrContainer::Container(Container::Map(m))) => m,
+            _ => return Err(Error::CommentNotFound(thread_id)),
+        };
+        let s = match status {
+            CommentStatus::Open => STATUS_OPEN,
+            CommentStatus::Resolved => STATUS_RESOLVED,
+        };
+        thread_entry
+            .insert(FIELD_STATUS, s)
+            .expect("loro map insert should not fail");
         Ok(())
     }
 
