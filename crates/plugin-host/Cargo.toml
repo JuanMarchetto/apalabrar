@@ -14,7 +14,7 @@ apalabrar-citation.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
-wasmtime = { version = "26", default-features = false, features = ["component-model", "cranelift", "runtime"] }
+wasmtime = { version = "34", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 
 [dev-dependencies]
 insta.workspace = true
