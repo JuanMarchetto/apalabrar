@@ -12,4 +12,4 @@ description = "Reference word-counter plugin compiled to WASM Component."
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.34"
+wit-bindgen = "0.51"

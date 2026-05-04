@@ -12,4 +12,4 @@ description = "Test fixture plugin exercising all 4 capabilities."
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.34"
+wit-bindgen = "0.51"
