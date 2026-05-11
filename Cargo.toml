@@ -52,7 +52,7 @@ rustybuzz = "0.20"
 comrak = "0.29"
 docx-rs = "0.4"
 html5ever = "0.29"
-markup5ever_rcdom = "0.5.0-unofficial"
+markup5ever_rcdom = "0.39.0+unofficial"
 pulldown-cmark = "0.12"
 quick-xml = "0.36"
 # Default features pull in `zstd-sys`, which needs a system clang to build for
