@@ -53,7 +53,7 @@ comrak = "0.29"
 docx-rs = "0.4"
 html5ever = "0.29"
 markup5ever_rcdom = "0.5.0-unofficial"
-pulldown-cmark = "0.12"
+pulldown-cmark = "0.13"
 quick-xml = "0.36"
 # Default features pull in `zstd-sys`, which needs a system clang to build for
 # wasm32. DOCX uses Deflate, not Zstd, so we strip the unused features. Keep
